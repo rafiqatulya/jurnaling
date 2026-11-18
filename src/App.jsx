@@ -412,7 +412,7 @@ const MONTHS_INFO = [
 ];
 
 // ============================================================================
-// 3. ILUSTRASI BINATANG 3D CLAY LUCU (REACT COMPONENT)
+// 3. ILUSTRASI BINATANG 3D CLAY LUCU
 // ============================================================================
 function getCuteAnimalSVG(type, sizeClass = 'w-full h-full') {
   const defs = `
@@ -677,7 +677,7 @@ function CuteAnimal({ type, sizeClass = 'w-full h-full' }) {
 }
 
 // ============================================================================
-// 4. INITIAL RIWAYAT JURNAL LYA (DENGAN KUNCI TANGGAL `YYYY-MM-DD`)
+// 4. INITIAL RIWAYAT JURNAL CONTOH (HANYA DIMUAT JIKA BELUM PERNAH ADA STORAGE)
 // ============================================================================
 const INITIAL_JOURNALS = {
   '2026-11-02': {
@@ -911,8 +911,7 @@ const INITIAL_JOURNALS = {
 };
 
 // ============================================================================
-// 5. ENGINE AI NLP LOKAL 100% OFFLINE (TANPA API & TANPA MENGADA-ADA)
-//    Meringkas & Mengekstrak Data Asli dari Teks Input + Memori Sebelumnya
+// 5. ENGINE PERANGKUM TEKS LOKAL DI LATAR BELAKANG (100% OFFLINE)
 // ============================================================================
 const STOPWORDS_ID = new Set([
   'aku', 'saya', 'gue', 'hari', 'ini', 'merasa', 'yang', 'dan', 'di', 'ke', 'dari',
@@ -949,7 +948,7 @@ const ACTION_MARKERS = [
 
 const HOBBY_TAXONOMY = [
   { kw: ['coding', 'koding', 'github', 'aplikasi', 'project', 'html', 'apk', 'react', 'web', 'program'], label: 'Coding Projects' },
-  { kw: ['teknologi', 'tech', 'sistem', 'data', 'ai', 'software'], label: 'Technology' },
+  { kw: ['teknologi', 'tech', 'sistem', 'data', 'software'], label: 'Technology' },
   { kw: ['bisnis', 'business', 'manajemen', 'produk', 'strategi'], label: 'Business' },
   { kw: ['pilates', 'yoga', 'stretching', 'peregangan', 'olahraga', 'gym', 'lari', 'workout'], label: 'Pilates & Fitness' },
   { kw: ['tulis', 'menulis', 'writing', 'diary', 'jurnal', 'journaling', 'cerita', 'puisi', 'lirik'], label: 'Journaling & Writing' },
@@ -963,7 +962,6 @@ const HOBBY_TAXONOMY = [
   { kw: ['game', 'gaming', 'main game'], label: 'Gaming' }
 ];
 
-// Membersihkan awalan kalimat pengantar tetapi mempertahankan isi asli tulisan pengguna
 function cleanLeadInPrefix(text) {
   if (!text) return '';
   return text
@@ -972,7 +970,6 @@ function cleanLeadInPrefix(text) {
     .trim();
 }
 
-// Meringkas klausa menjadi poin padat tanpa mengubah makna atau mengarang kata baru
 function summarizeClauseStrictly(rawClause, maxWords = 8) {
   if (!rawClause) return '';
   const cleaned = cleanLeadInPrefix(rawClause)
@@ -990,7 +987,6 @@ function summarizeClauseStrictly(rawClause, maxWords = 8) {
 
   let selectedWords = words;
   if (words.length > maxWords) {
-    // Pangkas kata pengisi (filler) tanpa merusak kata benda/kerja utama
     const meaningful = words.filter((w, idx) => idx === 0 || idx === words.length - 1 || !['yang', 'sangat', 'cukup', 'sekali', 'banget', 'sedikit', 'itu', 'ini', 'tadi'].includes(w.toLowerCase()));
     selectedWords = (meaningful.length >= 4 ? meaningful : words).slice(0, maxWords);
   }
@@ -999,7 +995,6 @@ function summarizeClauseStrictly(rawClause, maxWords = 8) {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
-// Memecah teks panjang menjadi daftar kalimat/klausa bermakna
 function splitIntoSentences(text) {
   if (!text) return [];
   return text
@@ -1008,7 +1003,6 @@ function splitIntoSentences(text) {
     .filter(s => s.length > 2);
 }
 
-// Algoritma TextRank / TF-IDF Sentence Scoring Lokal untuk memilih kalimat paling penting di Free Writing
 function rankSentencesByImportance(sentences) {
   if (sentences.length <= 1) return sentences;
   const wordFreq = {};
@@ -1028,7 +1022,6 @@ function rankSentencesByImportance(sentences) {
       if (wordFreq[t]) score += wordFreq[t];
     });
     const normScore = tokens.length > 0 ? score / Math.sqrt(tokens.length) : 0;
-    // Bonus untuk kalimat pertama (biasanya menggambarkan kondisi utama)
     const positionBonus = index === 0 ? 1.25 : 1.0;
     return { sent, score: normScore * positionBonus, index };
   });
@@ -1036,8 +1029,7 @@ function rankSentencesByImportance(sentences) {
   return scored.sort((a, b) => b.score - a.score).map(item => item.sent);
 }
 
-// Fungsi Utama AI Lokal: Meringkas input pengguna secara akurat & menggabungkan konteks historis
-function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistory = {}) {
+function buildJournalSummaryInsights(guidedInput, freeTextInput, moodId, allJournalsHistory = {}) {
   const mood = MOODS.find(m => m.id === moodId) || MOODS[2];
   const q1 = (guidedInput?.q1 || '').trim();
   const q2 = (guidedInput?.q2 || '').trim();
@@ -1055,13 +1047,12 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
   const allCombinedText = [q1, q2, q3, q4, q5, q6, q7, q8, free].filter(Boolean).join('. ');
   const fullLower = allCombinedText.toLowerCase();
 
-  // Jika pengguna belum mengisi teks apa pun, tampilkan status jujur sesuai mood
   if (!hasAnyInput) {
     return {
       self_reflection: {
-        summary: `Mood ${mood.name} dipilih. Tulis ceritamu agar AI lokal dapat meringkas catatanmu.`,
-        strengths: ['Meluangkan waktu membuka jurnal hari ini'],
-        areas_to_improve: ['Belum ada catatan teks yang dimasukkan']
+        summary: `Mood ${mood.name} (${mood.colorName}) hari ini.`,
+        strengths: ['Meluangkan waktu refleksi diri'],
+        areas_to_improve: ['Belum ada catatan yang ditulis']
       },
       interests_and_hobbies: {
         interests: ['Journaling'],
@@ -1074,14 +1065,12 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
       },
       personal_growth: {
         lessons_learned: ['Setiap perasaan layak dicatat'],
-        recommended_actions: ['Isi minimal 1 pertanyaan panduan atau cerita bebas']
+        recommended_actions: ['Tulis cerita singkat hari ini']
       }
     };
   }
 
-  // -------------------------------------------------------------------------
-  // 1. SELF REFLECTION (Summary, Hal Baik / Strengths, Perlu Diperhatikan)
-  // -------------------------------------------------------------------------
+  // 1. SELF REFLECTION
   let summary = '';
   if (q1) {
     summary = `Mood ${mood.name}: ${summarizeClauseStrictly(q1, 9)}.`;
@@ -1107,7 +1096,6 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     const pt = summarizeClauseStrictly(q5, 6);
     if (pt) strengths.push(`Belajar: ${pt}`);
   }
-  // Ekstrak kalimat positif dari Free Writing
   freeSentences.forEach(s => {
     const lower = s.toLowerCase();
     if (POSITIVE_MARKERS.some(m => lower.includes(m)) && !FRICTION_MARKERS.some(f => lower.includes(f))) {
@@ -1131,8 +1119,7 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
       if (pt) areas.push(pt);
     });
   }
-  // Ekstrak kalimat kendala/kekhawatiran dari Free Writing atau Q1
-  [... splitIntoSentences(q1), ...freeSentences].forEach(s => {
+  [...splitIntoSentences(q1), ...freeSentences].forEach(s => {
     const lower = s.toLowerCase();
     if (FRICTION_MARKERS.some(f => lower.includes(f))) {
       const pt = summarizeClauseStrictly(s, 7);
@@ -1142,16 +1129,13 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     }
   });
   if (areas.length === 0) {
-    areas.push('Tidak ada kendala berat yang tertulis hari ini');
+    areas.push('Jaga ritme istirahat malam');
   }
 
-  // -------------------------------------------------------------------------
-  // 2. INTERESTS & HOBBIES (Murni dari Teks Q6, Q5, Q2 & Free Writing)
-  // -------------------------------------------------------------------------
+  // 2. INTERESTS & HOBBIES
   const detectedInterests = [];
   const potentialHobbies = [];
 
-  // A. Ambil langsung apa yang ditulis pengguna di Q6 (Hobi/Rutinitas)
   if (q6) {
     q6.split(/[,;\n]|(?:\s+dan\s+)|(?:\s+serta\s+)|(?:\s+atau\s+)/i)
       .map(part => summarizeClauseStrictly(part, 5))
@@ -1166,7 +1150,6 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
       });
   }
 
-  // B. Cocokkan kata kunci yang benar-benar ada di dalam teks pengguna
   HOBBY_TAXONOMY.forEach(item => {
     if (item.kw.some(k => new RegExp(`\\b${k}`, 'i').test(fullLower))) {
       if (!detectedInterests.some(i => i.toLowerCase() === item.label.toLowerCase())) {
@@ -1175,7 +1158,6 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     }
   });
 
-  // C. Jika di Q5 (Hal yang dipelajari/dipikirkan) ada topik spesifik, masukkan juga
   if (q5) {
     const learnedTopic = summarizeClauseStrictly(q5, 4);
     if (learnedTopic && learnedTopic.length > 2 && !detectedInterests.some(i => i.toLowerCase() === learnedTopic.toLowerCase())) {
@@ -1183,7 +1165,6 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     }
   }
 
-  // D. Cari kalimat hobi/rutinitas di Free Writing
   freeSentences.forEach(s => {
     const lower = s.toLowerCase();
     if (lower.includes('hobi') || lower.includes('rutin') || lower.includes('latihan') || lower.includes('nyobain') || lower.includes('mencoba') || lower.includes('belajar')) {
@@ -1201,9 +1182,7 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     potentialHobbies.push(detectedInterests[0]);
   }
 
-  // -------------------------------------------------------------------------
-  // 3. DREAMS & FUTURE ASPIRATIONS (Murni dari Q7 & Kalimat Masa Depan di Teks)
-  // -------------------------------------------------------------------------
+  // 3. DREAMS & FUTURE ASPIRATIONS
   const dreams = [];
   const careerGoals = [];
   const lifeGoals = [];
@@ -1228,7 +1207,6 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
       .forEach(classifyAspiration);
   }
 
-  // Ekstrak kalimat berorientasi masa depan dari Free Writing
   freeSentences.forEach(s => {
     const low = s.toLowerCase();
     if (FUTURE_MARKERS.some(m => low.includes(m))) {
@@ -1236,12 +1214,10 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     }
   });
 
-  // Jika Q7 kosong dan tidak ada kalimat masa depan di hari ini, cek apakah ada target dari Q8 atau riwayat sebelumnya
   if (dreams.length === 0 && careerGoals.length === 0 && lifeGoals.length === 0) {
     if (q8) {
       dreams.push(`Fokus jangka pendek: ${summarizeClauseStrictly(q8, 6)}`);
     } else {
-      // Ambil aspirasi paling sering dari riwayat sebelumnya sebagai pengingat kompas diri
       const histDreams = {};
       Object.values(allJournalsHistory).forEach(entry => {
         (entry?.daily_insights?.future_aspirations?.dreams || []).forEach(d => {
@@ -1257,9 +1233,7 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     }
   }
 
-  // -------------------------------------------------------------------------
-  // 4. PERSONAL GROWTH & NEXT STEPS (Murni dari Q5, Q8 & Konteks Kendala Q3)
-  // -------------------------------------------------------------------------
+  // 4. PERSONAL GROWTH & NEXT STEPS
   const lessons = [];
   if (q5) {
     splitIntoSentences(q5).forEach(s => {
@@ -1296,7 +1270,6 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
       });
   }
 
-  // Ekstrak kalimat rencana dari Free Writing
   freeSentences.forEach(s => {
     const low = s.toLowerCase();
     if (ACTION_MARKERS.some(m => low.includes(m)) && (low.includes('besok') || low.includes('akan') || low.includes('mau') || low.includes('ingin'))) {
@@ -1307,11 +1280,10 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
     }
   });
 
-  // Jika ada kendala di Q3 tapi belum ada langkah solutif di Q8, berikan rekomendasi yang menjawab kendala Q3 secara spesifik
   if (q3 && recommendedActions.length < 2) {
     const q3Low = q3.toLowerCase();
     if (q3Low.includes('lelah') || q3Low.includes('capek') || q3Low.includes('kurang tidur')) {
-      recommendedActions.push('Prioritaskan istirahat cukup malam ini sebelum lanjut beraktivitas');
+      recommendedActions.push('Prioritaskan istirahat cukup malam ini');
     } else if (q3Low.includes('tunda') || q3Low.includes('menunda')) {
       recommendedActions.push('Mulai kerjakan tugas selama 15 menit pertama esok hari');
     } else if (q3Low.includes('banyak ide') || q3Low.includes('bingung')) {
@@ -1351,8 +1323,7 @@ function runLocalJournalAI(guidedInput, freeTextInput, moodId, allJournalsHistor
 }
 
 // ============================================================================
-// 6. ENGINE ANALISIS LINTAS WAKTU: BULANAN, TAHUNAN & SELF-DISCOVERY
-//    (Tetap Menghasilkan Ringkasan Akurat Meskipun Bulan/Tahun Belum Berakhir)
+// 6. ENGINE SINTESIS PERIODE BULANAN, TAHUNAN & SELF-DISCOVERY
 // ============================================================================
 function computePeriodSynthesis(entriesList, periodLabel = 'Bulan Ini') {
   const sorted = [...entriesList].sort((a, b) => a.dateStr.localeCompare(b.dateStr));
@@ -1389,7 +1360,7 @@ function computePeriodSynthesis(entriesList, periodLabel = 'Bulan Ini') {
 
     (ins.self_reflection?.areas_to_improve || []).forEach(a => {
       const k = a.trim();
-      if (k && !k.includes('Tidak ada kendala') && !k.includes('Belum ada catatan')) {
+      if (k && !k.includes('Belum ada catatan') && !k.includes('Jaga ritme istirahat malam')) {
         areaCounts[k] = (areaCounts[k] || 0) + 1;
       }
     });
@@ -1425,10 +1396,9 @@ function computePeriodSynthesis(entriesList, periodLabel = 'Bulan Ini') {
   const topDreamsText = sortedDreams.slice(0, 2).map(d => d.name).join(' & ');
   const topObstacleText = sortedPatterns[0]?.name;
 
-  // Narasi Kesimpulan AI Real-Time untuk Bulan/Tahun yang Sedang Berjalan
   let narrativeSummary = '';
   if (sorted.length === 0) {
-    narrativeSummary = `Belum ada catatan jurnal pada ${periodLabel}. Mulai tulis jurnal harianmu kapan saja—meskipun periode ini belum berakhir, AI lokal akan langsung merangkum perkembangannya secara otomatis.`;
+    narrativeSummary = `Belum ada catatan jurnal pada ${periodLabel}. Mulai tulis jurnal harianmu kapan saja—meskipun periode ini belum berakhir, catatanmu akan langsung terangkum secara otomatis.`;
   } else {
     const latestEntry = sorted[sorted.length - 1];
     narrativeSummary = `Berdasarkan ${sorted.length} catatan jurnal hingga tanggal ${latestEntry.day} (${periodLabel} masih berjalan), suasana hati dominanmu adalah ${topMood.name} (${topMood.colorName}) dengan rata-rata energi ${avgEnergy}%. `;
@@ -1458,31 +1428,98 @@ function computePeriodSynthesis(entriesList, periodLabel = 'Bulan Ini') {
 }
 
 // ============================================================================
-// 7. MAIN APPLICATION COMPONENT (`App.jsx`)
+// 7. PENYIMPANAN PERMANEN LOKAL (SYNCHRONOUS STORAGE ENGINE)
+//    Memastikan data yang dihapus (termasuk 0 catatan) TIDAK balik ke dummy!
+// ============================================================================
+const STORAGE_KEY = 'dear_future_me_lya_offline_v4';
+
+function loadInitialPersistentState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      let normalizedJournals = INITIAL_JOURNALS;
+
+      // Penting: Selama parsed.journals adalah object (meskipun kosong `{}` karena semua dihapus),
+      // gunakan data dari storage dan JANGAN pernah me-reset kembali ke INITIAL_JOURNALS!
+      if (parsed && parsed.journals && typeof parsed.journals === 'object') {
+        normalizedJournals = {};
+        Object.entries(parsed.journals).forEach(([k, val]) => {
+          if (/^\d+$/.test(k)) {
+            const dNum = parseInt(k, 10);
+            const fullKey = `2026-11-${String(dNum).padStart(2, '0')}`;
+            normalizedJournals[fullKey] = {
+              ...val,
+              year: 2026,
+              month: 11,
+              day: dNum,
+              dateStr: fullKey
+            };
+          } else if (val && typeof val === 'object') {
+            normalizedJournals[k] = val;
+          }
+        });
+      }
+
+      return {
+        selectedMoodId: parsed.selectedMoodId || 'in_love',
+        userName: parsed.userName || 'Lya',
+        completedActions: parsed.completedActions || {},
+        journals: normalizedJournals
+      };
+    }
+  } catch (err) {
+    console.error('Error reading local storage:', err);
+  }
+
+  // Jika aplikasi benar-benar baru pertama kali diinstal di HP, simpan state awal
+  const firstRunState = {
+    selectedMoodId: 'in_love',
+    userName: 'Lya',
+    completedActions: {},
+    journals: INITIAL_JOURNALS
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(firstRunState));
+  } catch (e) {}
+  return firstRunState;
+}
+
+function saveToPersistentStorage(payload) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.error('Error writing local storage:', err);
+  }
+}
+
+// ============================================================================
+// 8. MAIN APPLICATION COMPONENT (`App.jsx`)
 // ============================================================================
 export default function App() {
-  // State Utama
+  // Inisialisasi langsung dari localStorage tanpa jeda / tanpa risiko tertimpa ulang
+  const initialData = useMemo(() => loadInitialPersistentState(), []);
+
   const [currentView, setCurrentView] = useState('home');
   const [splashVisible, setSplashVisible] = useState(true);
   const [splashTransitionMood, setSplashTransitionMood] = useState(null);
-  const [selectedMoodId, setSelectedMoodId] = useState('in_love');
+  const [selectedMoodId, setSelectedMoodId] = useState(initialData.selectedMoodId);
   const [selectedYear, setSelectedYear] = useState(2026);
-  const [selectedMonth, setSelectedMonth] = useState(11); // 11 = November
+  const [selectedMonth, setSelectedMonth] = useState(11);
   const [selectedDay, setSelectedDay] = useState(18);
   const [journalMode, setJournalMode] = useState('guided');
   const [homeSubTab, setHomeSubTab] = useState('aspirations');
   const [archiveSubTab, setArchiveSubTab] = useState('month');
   const [isFullWidthDesktop, setIsFullWidthDesktop] = useState(false);
-  const [userName, setUserName] = useState('Lya');
-  const [inputUserName, setInputUserName] = useState('Lya');
+  const [userName, setUserName] = useState(initialData.userName);
+  const [inputUserName, setInputUserName] = useState(initialData.userName);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
-  const [completedActions, setCompletedActions] = useState({});
+  const [completedActions, setCompletedActions] = useState(initialData.completedActions);
   const [seenMessageIndices, setSeenMessageIndices] = useState({});
   const [currentMessageIndexByMood, setCurrentMessageIndexByMood] = useState({ in_love: 2 });
-  const [journals, setJournals] = useState(INITIAL_JOURNALS);
+  const [journals, setJournals] = useState(initialData.journals);
 
-  // State Form Input Jurnal Harian
   const [guidedForm, setGuidedForm] = useState({
     q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: ''
   });
@@ -1491,55 +1528,18 @@ export default function App() {
   const insightsSectionRef = useRef(null);
   const toastTimerRef = useRef(null);
 
-  // Helper format kunci tanggal YYYY-MM-DD
   const makeDateKey = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   const currentDateKey = makeDateKey(selectedYear, selectedMonth, selectedDay);
   const currentMonthInfo = MONTHS_INFO.find(m => m.num === selectedMonth) || MONTHS_INFO[10];
 
-  // Load state dari localStorage saat pertama kali dibuka
+  // Simpan setiap perubahan secara otomatis & instan ke localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('dear_future_me_lya_offline_v4');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.selectedMoodId) setSelectedMoodId(parsed.selectedMoodId);
-        if (parsed.userName) {
-          setUserName(parsed.userName);
-          setInputUserName(parsed.userName);
-        }
-        if (parsed.completedActions) setCompletedActions(parsed.completedActions);
-        if (parsed.journals && Object.keys(parsed.journals).length > 0) {
-          // Migrasi otomatis jika ada kunci lama berupa angka hari saja
-          const normalized = {};
-          Object.entries(parsed.journals).forEach(([k, val]) => {
-            if (/^\d+$/.test(k)) {
-              const dNum = parseInt(k, 10);
-              const fullKey = makeDateKey(2026, 11, dNum);
-              normalized[fullKey] = { ...val, year: 2026, month: 11, day: dNum, dateStr: fullKey };
-            } else {
-              normalized[k] = val;
-            }
-          });
-          setJournals(normalized);
-        }
-      }
-    } catch (err) {
-      console.error('Failed loading state:', err);
-    }
-  }, []);
-
-  // Simpan otomatis ke localStorage ketika ada perubahan data
-  useEffect(() => {
-    try {
-      localStorage.setItem('dear_future_me_lya_offline_v4', JSON.stringify({
-        selectedMoodId,
-        userName,
-        completedActions,
-        journals
-      }));
-    } catch (err) {
-      console.error('Failed saving state:', err);
-    }
+    saveToPersistentStorage({
+      selectedMoodId,
+      userName,
+      completedActions,
+      journals
+    });
   }, [selectedMoodId, userName, completedActions, journals]);
 
   // Terapkan CSS Variables setiap kali mood berganti
@@ -1554,7 +1554,7 @@ export default function App() {
     root.style.setProperty('--mood-accent', mood.accent);
   }, [selectedMoodId]);
 
-  // Sinkronkan form input jurnal ketika pengguna memilih tanggal/bulan/tahun berbeda
+  // Sinkronkan form input jurnal ketika tanggal berubah
   useEffect(() => {
     const entry = journals[currentDateKey];
     if (entry) {
@@ -1585,7 +1585,6 @@ export default function App() {
 
   const getMoodById = (id) => MOODS.find(m => m.id === id) || MOODS[2];
 
-  // Picker Pesan Non-Repeating
   const pickNonRepeatingMoodMessageIndex = (moodId) => {
     const collection = MOOD_MESSAGES_COLLECTION[moodId] || MOOD_MESSAGES_COLLECTION.in_love;
     const total = collection.messages.length;
@@ -1601,11 +1600,16 @@ export default function App() {
     return chosen;
   };
 
-  // Handler memilih mood dari Splash Screen -> animasi warna -> otomatis masuk Home
   const handleSelectMoodFromSplash = (moodId) => {
     setSplashTransitionMood(moodId);
     setSelectedMoodId(moodId);
     pickNonRepeatingMoodMessageIndex(moodId);
+    saveToPersistentStorage({
+      selectedMoodId: moodId,
+      userName,
+      completedActions,
+      journals
+    });
 
     setTimeout(() => {
       setSplashVisible(false);
@@ -1619,9 +1623,9 @@ export default function App() {
     setSplashVisible(true);
   };
 
-  // Simpan & Jalankan Model AI Lokal pada Jurnal Harian
+  // Simpan Jurnal & Jalankan Perangkum di Latar Belakang
   const handleSaveAndAnalyzeJournal = () => {
-    const aiInsights = runLocalJournalAI(guidedForm, freeTextForm, selectedMoodId, journals);
+    const conciseInsights = buildJournalSummaryInsights(guidedForm, freeTextForm, selectedMoodId, journals);
     const updatedEntry = {
       year: selectedYear,
       month: selectedMonth,
@@ -1630,51 +1634,79 @@ export default function App() {
       moodId: selectedMoodId,
       guided: { ...guidedForm },
       freeText: freeTextForm,
-      daily_insights: aiInsights
+      daily_insights: conciseInsights
     };
 
-    setJournals(prev => ({
-      ...prev,
+    const nextJournals = {
+      ...journals,
       [currentDateKey]: updatedEntry
-    }));
+    };
 
-    showToast(`Jurnal ${selectedDay} ${currentMonthInfo.short} ${selectedYear} berhasil diringkas & disimpan! ✨`);
+    setJournals(nextJournals);
+    saveToPersistentStorage({
+      selectedMoodId,
+      userName,
+      completedActions,
+      journals: nextJournals
+    });
+
+    showToast(`Jurnal ${selectedDay} ${currentMonthInfo.short} tersimpan! ✨`);
     setTimeout(() => {
       insightsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   };
 
-  // Hapus jurnal pada tanggal tertentu jika diperlukan
+  // Hapus 1 Catatan Jurnal Secara Permanen
   const handleDeleteJournalEntry = (dateKey) => {
-    setJournals(prev => {
-      const copy = { ...prev };
-      delete copy[dateKey];
-      return copy;
+    const nextJournals = { ...journals };
+    delete nextJournals[dateKey];
+    setJournals(nextJournals);
+    saveToPersistentStorage({
+      selectedMoodId,
+      userName,
+      completedActions,
+      journals: nextJournals
     });
-    showToast('Catatan jurnal dihapus.');
+    setGuidedForm({ q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '' });
+    setFreeTextForm('');
+    showToast('Catatan jurnal berhasil dihapus.');
   };
 
-  // Live Preview AI Insights untuk tanggal yang sedang dibuka
+  // Kosongkan Seluruh Catatan (Termasuk Data Contoh) Secara Permanen
+  const handleClearAllJournals = () => {
+    const emptyJournals = {};
+    setJournals(emptyJournals);
+    setCompletedActions({});
+    saveToPersistentStorage({
+      selectedMoodId,
+      userName,
+      completedActions: {},
+      journals: emptyJournals
+    });
+    setGuidedForm({ q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '' });
+    setFreeTextForm('');
+    setSettingsOpen(false);
+    showToast('Seluruh catatan dikosongkan secara permanen!');
+  };
+
+  // Hasil Ringkasan Harian (Diolah secara otomatis di latar belakang)
   const activeDailyInsights = useMemo(() => {
     const saved = journals[currentDateKey];
-    // Jika pengguna sedang mengetik perubahan baru di form, tampilkan hasil olahan real-time
     const hasUnsavedTyping =
       Object.values(guidedForm).some(v => v.trim().length > 0) || freeTextForm.trim().length > 0;
     if (hasUnsavedTyping) {
-      return runLocalJournalAI(guidedForm, freeTextForm, selectedMoodId, journals);
+      return buildJournalSummaryInsights(guidedForm, freeTextForm, selectedMoodId, journals);
     }
     if (saved?.daily_insights) {
       return saved.daily_insights;
     }
-    return runLocalJournalAI(guidedForm, freeTextForm, selectedMoodId, journals);
+    return buildJournalSummaryInsights(guidedForm, freeTextForm, selectedMoodId, journals);
   }, [currentDateKey, journals, guidedForm, freeTextForm, selectedMoodId]);
 
-  // Data Agregasi Seluruh Waktu (All-Time Self-Discovery)
   const allTimeSynthesis = useMemo(() => {
     return computePeriodSynthesis(Object.values(journals), 'Seluruh Catatan');
   }, [journals]);
 
-  // Data Agregasi Bulan yang Sedang Dipilih (Berjalan / In-Progress)
   const currentMonthEntries = useMemo(() => {
     const prefix = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-`;
     return Object.values(journals).filter(e => e.dateStr?.startsWith(prefix));
@@ -1684,7 +1716,6 @@ export default function App() {
     return computePeriodSynthesis(currentMonthEntries, `${currentMonthInfo.full} ${selectedYear}`);
   }, [currentMonthEntries, currentMonthInfo, selectedYear]);
 
-  // Data Agregasi Tahun yang Sedang Dipilih (Berjalan / In-Progress)
   const currentYearEntries = useMemo(() => {
     const prefix = `${selectedYear}-`;
     return Object.values(journals).filter(e => e.dateStr?.startsWith(prefix));
@@ -1694,7 +1725,6 @@ export default function App() {
     return computePeriodSynthesis(currentYearEntries, `Tahun ${selectedYear}`);
   }, [currentYearEntries, selectedYear]);
 
-  // Informasi Mood Aktif & Maskot Pendamping
   const activeMoodIndex = MOODS.findIndex(m => m.id === selectedMoodId);
   const activeMood = MOODS[activeMoodIndex >= 0 ? activeMoodIndex : 2];
   const buddyMood1 = MOODS[(activeMoodIndex + 1) % MOODS.length];
@@ -1703,11 +1733,9 @@ export default function App() {
   const activeMsgIdx = currentMessageIndexByMood[selectedMoodId] ?? 0;
   const activeNoteMessage = activeMsgCollection.messages[activeMsgIdx] || activeMsgCollection.messages[0];
 
-  // Mood untuk tampilan Splash Screen
   const splashMoodObj = splashTransitionMood ? getMoodById(splashTransitionMood) : activeMood;
   const splashMsgCollection = MOOD_MESSAGES_COLLECTION[splashMoodObj.id] || MOOD_MESSAGES_COLLECTION.in_love;
 
-  // Frekuensi Minat & Impian untuk Badge Konsisten vs Baru 1x
   const interestFreqMap = useMemo(() => {
     const map = {};
     allTimeSynthesis.sortedInterests.forEach(it => {
@@ -1724,7 +1752,6 @@ export default function App() {
     return map;
   }, [allTimeSynthesis]);
 
-  // Langkah Kecil Besok di Home (dari jurnal tanggal terpilih atau jurnal terakhir yang ada)
   const latestSavedEntry = useMemo(() => {
     if (journals[currentDateKey]) return journals[currentDateKey];
     const allSorted = Object.values(journals).sort((a, b) => b.dateStr.localeCompare(a.dateStr));
@@ -1989,7 +2016,6 @@ export default function App() {
                 className="p-5 rounded-[30px] relative overflow-hidden shadow-sm border-2 border-white/90 theme-transition"
                 style={{ backgroundColor: 'var(--mood-card)' }}
               >
-                {/* Cute Mascots Background Watermark Layer */}
                 <div className="absolute -right-3 -bottom-4 w-32 h-32 opacity-35 pointer-events-none transform rotate-6 animate-float">
                   <CuteAnimal type={activeMood.animalType} sizeClass="w-32 h-32" />
                 </div>
@@ -2133,7 +2159,7 @@ export default function App() {
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">{userName}'s Mood Journey</h3>
                     <p className="text-[11px] text-slate-500">
-                      Tren suasana hati 12 tanggal pada {currentMonthInfo.short} {selectedYear}
+                      Tren suasana hati 12 catatan pada {currentMonthInfo.short} {selectedYear}
                     </p>
                   </div>
                 </div>
@@ -2163,7 +2189,7 @@ export default function App() {
                         setCurrentView('journal');
                       }}
                       className="flex-1 flex flex-col items-center gap-1 cursor-pointer group"
-                      title={`Tanggal ${d} ${currentMonthInfo.short}: ${entry ? m.name : 'Belum diisi'}`}
+                      title={`Tanggal ${d} ${currentMonthInfo.short}: ${entry ? m.name : 'Kosong'}`}
                     >
                       <div className="w-full max-w-[14px] bg-slate-100 rounded-full h-16 flex items-end p-0.5 overflow-hidden">
                         <div
@@ -2233,6 +2259,14 @@ export default function App() {
                   }));
                 }
 
+                if (items.length === 0) {
+                  items = [
+                    { title: 'Mulai Menulis', sub: 'Tulis jurnal pertamamu', icon: '✨', bg: pastelBgSet[0] },
+                    { title: 'Kenali Diri', sub: 'Rangkuman otomatis', icon: '💗', bg: pastelBgSet[1] },
+                    { title: 'Langkah Kecil', sub: 'Bertumbuh tiap hari', icon: '🌱', bg: pastelBgSet[2] }
+                  ];
+                }
+
                 return items.map((card, i) => (
                   <div
                     key={i}
@@ -2275,9 +2309,16 @@ export default function App() {
                 return (
                   <div
                     key={key}
-                    onClick={() =>
-                      setCompletedActions(prev => ({ ...prev, [key]: !prev[key] }))
-                    }
+                    onClick={() => {
+                      const nextCompleted = { ...completedActions, [key]: !completedActions[key] };
+                      setCompletedActions(nextCompleted);
+                      saveToPersistentStorage({
+                        selectedMoodId,
+                        userName,
+                        completedActions: nextCompleted,
+                        journals
+                      });
+                    }}
                     className="pastel-card p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:scale-[1.01] transition"
                   >
                     <div className="flex items-center gap-3">
@@ -2296,7 +2337,7 @@ export default function App() {
                           {act}
                         </h4>
                         <p className="text-[10px] text-slate-500 mt-0.5">
-                          Rekomendasi dari jurnal {latestSavedEntry?.day || selectedDay} {currentMonthInfo.short}
+                          Rekomendasi jurnal {latestSavedEntry?.day || selectedDay} {currentMonthInfo.short}
                         </p>
                       </div>
                     </div>
@@ -2329,7 +2370,7 @@ export default function App() {
               </button>
               <div className="text-center">
                 <h2 className="text-sm font-extrabold text-slate-800">My Little Daily Journal</h2>
-                <p className="text-[11px] text-slate-500">Daily diary · Offline AI Summarizer</p>
+                <p className="text-[11px] text-slate-500">Daily diary · Free writing</p>
               </div>
               <button
                 onClick={openSplashMoodScreen}
@@ -2356,7 +2397,7 @@ export default function App() {
                   >
                     {MONTHS_INFO.map(m => (
                       <option key={m.num} value={m.num}>
-                        {m.full} {selectedYear}
+                        Pilih Tanggal ({m.full} {selectedYear})
                       </option>
                     ))}
                   </select>
@@ -2425,7 +2466,7 @@ export default function App() {
             </div>
 
             <p className="text-[11px] text-slate-500 mb-3 px-1">
-              Tidak harus diisi semua—tulis senyamanmu, {userName}. AI lokal akan mengolah langsung kalimat yang kamu tulis 💗
+              Tidak harus diisi semua—tulis senyamanmu, {userName} 💗
             </p>
 
             {/* 8 Guided Questions */}
@@ -2480,13 +2521,13 @@ export default function App() {
               </div>
             )}
 
-            {/* Save & Summarize Button */}
+            {/* Simple Save Button */}
             <button
               onClick={handleSaveAndAnalyzeJournal}
               className="w-full py-4 rounded-full text-white font-extrabold text-sm shadow-lg hover:opacity-95 active:scale-[0.99] transition flex items-center justify-center gap-2 mb-6"
               style={{ backgroundColor: 'var(--mood-dark)' }}
             >
-              <span>Simpan & Ringkas dengan AI Lokal ✨</span>
+              <span>Simpan Jurnal ✨</span>
             </button>
 
             {/* ================= 4 KESIMPULAN RINGKAS ================= */}
@@ -2497,7 +2538,7 @@ export default function App() {
                     className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full"
                     style={{ backgroundColor: 'var(--mood-pill)', color: 'var(--mood-dark)' }}
                   >
-                    Ringkasan Harian Offline
+                    Ringkasan Harian
                   </span>
                   <h3 className="text-base font-extrabold text-slate-800 mt-1">
                     4 Kesimpulan & Rekomendasi {userName}
@@ -2646,7 +2687,7 @@ export default function App() {
                     04 · Personal Growth & Next Steps
                   </span>
                   <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-bold">
-                    Rekomendasi AI Lokal
+                    Rekomendasi
                   </span>
                 </div>
                 <div className="rounded-2xl bg-white/10 p-2.5 mb-2.5">
@@ -2705,7 +2746,7 @@ export default function App() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Arsip Bulanan, Tahunan & Kesimpulan AI Lokal
+                    Arsip Harian & Perkembangan Diri
                   </p>
                 </div>
               </div>
@@ -2746,7 +2787,7 @@ export default function App() {
               })}
             </div>
 
-            {/* SUBVIEW A: BULAN INI (1-30 + RINGKASAN AI BULAN BERJALAN) */}
+            {/* SUBVIEW A: BULAN INI (1-30 + RINGKASAN BULAN BERJALAN) */}
             {archiveSubTab === 'month' && (
               <div className="space-y-4">
                 {/* Selector Bulan */}
@@ -2771,14 +2812,14 @@ export default function App() {
                   })}
                 </div>
 
-                {/* ★ RINGKASAN AI BULAN BERJALAN (MESKI BULAN BELUM BERAKHIR) ★ */}
+                {/* RINGKASAN BULAN BERJALAN */}
                 <div
                   className="p-4 rounded-[28px] text-white shadow-md"
                   style={{ backgroundColor: 'var(--mood-dark)' }}
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
-                      ✨ Ringkasan AI Bulan Berjalan
+                      ✨ Ringkasan Bulan Berjalan
                     </span>
                     <span className="text-[11px] font-bold text-white/80">
                       {currentMonthEntries.length} Catatan di {currentMonthInfo.full}
@@ -2911,17 +2952,26 @@ export default function App() {
                                 </h4>
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedMoodId(selEntry.moodId);
-                                setCurrentView('journal');
-                              }}
-                              className="text-xs font-extrabold px-3 py-1.5 rounded-full text-white"
-                              style={{ backgroundColor: m.darkText }}
-                            >
-                              Lihat & Edit
-                            </button>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteJournalEntry(currentDateKey)}
+                                className="text-[11px] font-bold px-2.5 py-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100"
+                              >
+                                Hapus
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedMoodId(selEntry.moodId);
+                                  setCurrentView('journal');
+                                }}
+                                className="text-xs font-extrabold px-3 py-1.5 rounded-full text-white"
+                                style={{ backgroundColor: m.darkText }}
+                              >
+                                Lihat & Edit
+                              </button>
+                            </div>
                           </div>
                           <p className="text-xs font-bold text-slate-700 mb-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                             {selEntry.daily_insights?.self_reflection?.summary}
@@ -2959,7 +3009,7 @@ export default function App() {
                 {/* Monthly General Mood Distribution Summary */}
                 <div className="pastel-card p-4">
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">
-                    Distribusi Mood {currentMonthInfo.full} {selectedYear}
+                    Rekap Mood Bulan Ini
                   </h4>
                   {monthlySynthesis.sortedMoods.length > 0 ? (
                     <div className="space-y-2.5">
@@ -3000,17 +3050,16 @@ export default function App() {
               </div>
             )}
 
-            {/* SUBVIEW B: TAHUN INI (REKAP 12 BULAN + RINGKASAN AI TAHUN BERJALAN) */}
+            {/* SUBVIEW B: TAHUN INI (REKAP 12 BULAN + RINGKASAN TAHUN BERJALAN) */}
             {archiveSubTab === 'year' && (
               <div className="space-y-4">
-                {/* ★ RINGKASAN AI TAHUN BERJALAN (MESKI TAHUN BELUM BERAKHIR) ★ */}
                 <div
                   className="p-5 rounded-[28px] text-white shadow-md"
                   style={{ backgroundColor: 'var(--mood-dark)' }}
                 >
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
-                      🌈 Ringkasan AI Tahun {selectedYear} (Berjalan)
+                      🌈 Ringkasan Tahun {selectedYear} (Berjalan)
                     </span>
                     <span className="text-xs font-bold text-white/85">
                       Total {currentYearEntries.length} Jurnal
@@ -3033,15 +3082,15 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Grid 12 Bulan (Dihitung dari Data Jurnal Nyata + Bisa Diklik) */}
+                {/* Grid 12 Bulan */}
                 <div className="pastel-card p-5">
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <h3 className="text-sm font-extrabold text-slate-800">
-                        Kilas Balik 12 Bulan · Tahun {selectedYear}
+                        Kilas Balik Mood Tahun {selectedYear}
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        Sentuh bulan mana saja untuk membuka kalender & ringkasan bulan tersebut
+                        Sentuh bulan mana saja untuk membuka kalender & catatan bulan tersebut
                       </p>
                     </div>
                   </div>
@@ -3051,7 +3100,6 @@ export default function App() {
                       const mEntries = Object.values(journals).filter(e =>
                         e.dateStr?.startsWith(prefix)
                       );
-                      // Hitung mood dominan di bulan tersebut dari jurnal nyata
                       let domMoodId = 'neutral';
                       if (mEntries.length > 0) {
                         const counts = {};
@@ -3089,7 +3137,7 @@ export default function App() {
                             className="text-[10px] font-bold"
                             style={{ color: mEntries.length > 0 ? mObj.darkText : '#94A3B8' }}
                           >
-                            {mEntries.length > 0 ? mObj.name : 'Belum diisi'}
+                            {mEntries.length > 0 ? mObj.name : 'Kosong'}
                           </span>
                           <span className="text-[9px] text-slate-600 mt-0.5">
                             {mEntries.length} catatan
@@ -3103,39 +3151,45 @@ export default function App() {
                 {/* Mood Dominan Sepanjang Tahun Berjalan */}
                 <div className="pastel-card p-5">
                   <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">
-                    Mood Dominan Tahun {selectedYear} (Dari Catatanmu)
+                    Mood Dominan Tahun {selectedYear}
                   </h4>
-                  <div className="space-y-2.5">
-                    {yearlySynthesis.sortedMoods.map(({ mood: m, count }) => (
-                      <div
-                        key={m.id}
-                        className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3"
-                      >
+                  {yearlySynthesis.sortedMoods.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {yearlySynthesis.sortedMoods.map(({ mood: m, count }) => (
                         <div
-                          className="w-10 h-10 rounded-2xl p-1 shrink-0"
-                          style={{ backgroundColor: m.cardBg }}
+                          key={m.id}
+                          className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3"
                         >
-                          <CuteAnimal type={m.animalType} sizeClass="w-8 h-8" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold text-slate-800">
-                              {m.name} · {m.colorName}
-                            </span>
-                            <span
-                              className="text-xs font-extrabold"
-                              style={{ color: m.darkText }}
-                            >
-                              {count} catatan
-                            </span>
+                          <div
+                            className="w-10 h-10 rounded-2xl p-1 shrink-0"
+                            style={{ backgroundColor: m.cardBg }}
+                          >
+                            <CuteAnimal type={m.animalType} sizeClass="w-8 h-8" />
                           </div>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            Energi rata-rata mood ini: {m.energyScore}%
-                          </p>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-extrabold text-slate-800">
+                                {m.name} · {m.colorName}
+                              </span>
+                              <span
+                                className="text-xs font-extrabold"
+                                style={{ color: m.darkText }}
+                              >
+                                {count} hari
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Energi rata-rata mood ini: {m.energyScore}%
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400">
+                      Belum ada catatan mood pada tahun {selectedYear}.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -3154,7 +3208,7 @@ export default function App() {
                     Dear Future {userName} 💗
                   </h3>
                   <p className="text-xs text-white/85 mt-1 leading-relaxed">
-                    Akumulasi minat, impian, dan pola dirimu yang diolah langsung dari {allTimeSynthesis.totalEntries} catatan jurnalmu.
+                    Akumulasi minat, impian, dan pola dirimu dari waktu ke waktu secara otomatis ({allTimeSynthesis.totalEntries} catatan).
                   </p>
                 </div>
 
@@ -3166,32 +3220,36 @@ export default function App() {
                     1. My Recurring Interests
                   </h4>
                   <p className="text-[11px] text-slate-500 mb-2.5">
-                    Minat konsisten vs minat baru yang kamu tulis:
+                    Minat konsisten vs minat baru:
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {allTimeSynthesis.sortedInterests.map((item, i) => {
-                      const isRecurring = item.count >= 2;
-                      return (
-                        <div
-                          key={i}
-                          className={`px-3 py-1.5 rounded-2xl flex items-center gap-1.5 border ${
-                            isRecurring
-                              ? 'border-transparent shadow-sm'
-                              : 'border-slate-200 bg-slate-50'
-                          }`}
-                          style={
-                            isRecurring
-                              ? { backgroundColor: 'var(--mood-card)', color: 'var(--mood-dark)' }
-                              : {}
-                          }
-                        >
-                          <span className="text-xs font-extrabold">{item.name}</span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-slate-700">
-                            {isRecurring ? `Konsisten (${item.count}x)` : '1x'}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {allTimeSynthesis.sortedInterests.length > 0 ? (
+                      allTimeSynthesis.sortedInterests.map((item, i) => {
+                        const isRecurring = item.count >= 2;
+                        return (
+                          <div
+                            key={i}
+                            className={`px-3 py-1.5 rounded-2xl flex items-center gap-1.5 border ${
+                              isRecurring
+                                ? 'border-transparent shadow-sm'
+                                : 'border-slate-200 bg-slate-50'
+                            }`}
+                            style={
+                              isRecurring
+                                ? { backgroundColor: 'var(--mood-card)', color: 'var(--mood-dark)' }
+                                : {}
+                            }
+                          >
+                            <span className="text-xs font-extrabold">{item.name}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-slate-700">
+                              {isRecurring ? `Konsisten (${item.count}x)` : '1x'}
+                            </span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-xs text-slate-400">Belum ada minat yang tercatat.</p>
+                    )}
                   </div>
                 </div>
 
@@ -3203,43 +3261,47 @@ export default function App() {
                     2. My Future Aspirations
                   </h4>
                   <p className="text-[11px] text-slate-500 mb-2.5">
-                    Cita-cita yang berulang kali tertulis di jurnalmu:
+                    Cita-cita yang berulang kali tertulis:
                   </p>
                   <div className="space-y-2">
-                    {allTimeSynthesis.sortedDreams.map((d, i) => {
-                      const isConsistent = d.count >= 2;
-                      return (
-                        <div
-                          key={i}
-                          className={`p-3 rounded-2xl flex items-center justify-between gap-2 ${
-                            isConsistent
-                              ? 'bg-emerald-50/70 border border-emerald-100'
-                              : 'bg-slate-50 border border-slate-200/70'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <span className="w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center bg-white shadow-sm">
-                              {i + 1}
-                            </span>
-                            <div>
-                              <p className="text-xs font-extrabold text-slate-800">{d.name}</p>
-                              <p className="text-[10px] text-slate-500">
-                                {isConsistent ? 'Aspirasi konsisten' : 'Minat baru (1x)'}
-                              </p>
-                            </div>
-                          </div>
-                          <span
-                            className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full shrink-0 ${
+                    {allTimeSynthesis.sortedDreams.length > 0 ? (
+                      allTimeSynthesis.sortedDreams.map((d, i) => {
+                        const isConsistent = d.count >= 2;
+                        return (
+                          <div
+                            key={i}
+                            className={`p-3 rounded-2xl flex items-center justify-between gap-2 ${
                               isConsistent
-                                ? 'bg-emerald-200/80 text-emerald-950'
-                                : 'bg-amber-100 text-amber-900'
+                                ? 'bg-emerald-50/70 border border-emerald-100'
+                                : 'bg-slate-50 border border-slate-200/70'
                             }`}
                           >
-                            {d.count}x
-                          </span>
-                        </div>
-                      );
-                    })}
+                            <div className="flex items-center gap-2.5">
+                              <span className="w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center bg-white shadow-sm">
+                                {i + 1}
+                              </span>
+                              <div>
+                                <p className="text-xs font-extrabold text-slate-800">{d.name}</p>
+                                <p className="text-[10px] text-slate-500">
+                                  {isConsistent ? 'Aspirasi konsisten' : 'Kemungkinan minat baru (1x)'}
+                                </p>
+                              </div>
+                            </div>
+                            <span
+                              className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full shrink-0 ${
+                                isConsistent
+                                  ? 'bg-emerald-200/80 text-emerald-950'
+                                  : 'bg-amber-100 text-amber-900'
+                              }`}
+                            >
+                              {d.count}x
+                            </span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-xs text-slate-400">Belum ada cita-cita yang tercatat.</p>
+                    )}
                   </div>
                 </div>
 
@@ -3250,19 +3312,23 @@ export default function App() {
                   >
                     3. Patterns to Pay Attention To
                   </h4>
-                  <ul className="text-xs text-slate-700 space-y-1.5">
-                    {allTimeSynthesis.sortedPatterns.map((p, i) => (
-                      <li
-                        key={i}
-                        className="p-2.5 rounded-2xl bg-amber-50/70 border border-amber-100 flex items-center justify-between"
-                      >
-                        <span>• {p.name}</span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-amber-900">
-                          {p.count}x
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  {allTimeSynthesis.sortedPatterns.length > 0 ? (
+                    <ul className="text-xs text-slate-700 space-y-1.5">
+                      {allTimeSynthesis.sortedPatterns.map((p, i) => (
+                        <li
+                          key={i}
+                          className="p-2.5 rounded-2xl bg-amber-50/70 border border-amber-100 flex items-center justify-between"
+                        >
+                          <span>• {p.name}</span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-amber-900">
+                            {p.count}x
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-slate-400">Belum ada pola kendala yang tercatat.</p>
+                  )}
                 </div>
 
                 <div className="pastel-card p-4">
@@ -3280,7 +3346,7 @@ export default function App() {
                           allTimeSynthesis.sortedInterests
                             .slice(0, 3)
                             .map(x => x.name)
-                            .join(', ') || 'Pengembangan diri'
+                            .join(', ') || 'Belum ada catatan'
                       },
                       {
                         q: 'Apa impian utamaku?',
@@ -3288,11 +3354,11 @@ export default function App() {
                           allTimeSynthesis.sortedDreams
                             .slice(0, 2)
                             .map(x => x.name)
-                            .join(' & ') || 'Terus bertumbuh'
+                            .join(' & ') || 'Belum ada catatan'
                       },
                       {
                         q: 'Hal baik yang terakhir dicapai?',
-                        a: allTimeSynthesis.strengthList[0] || 'Rutin menulis refleksi diri'
+                        a: allTimeSynthesis.strengthList[0] || 'Mulai menulis jurnal'
                       },
                       {
                         q: 'Pola yang perlu dijaga?',
@@ -3300,7 +3366,10 @@ export default function App() {
                       },
                       {
                         q: 'Apakah bergerak maju?',
-                        a: `Ya, ${allTimeSynthesis.totalEntries} catatan menunjukkan progres nyata 💗`
+                        a:
+                          allTimeSynthesis.totalEntries > 0
+                            ? `Ya, ${allTimeSynthesis.totalEntries} catatan menunjukkan progres konsisten 💗`
+                            : 'Siap memulai catatan pertama 💗'
                       }
                     ].map((item, i) => (
                       <div
@@ -3410,18 +3479,23 @@ export default function App() {
 
                 <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
                   <p className="text-[11px] font-bold text-slate-700">
-                    🔒 100% Penyimpanan & AI NLP Lokal (Offline)
+                    🔒 100% Penyimpanan & Olah Data Lokal (Offline)
                   </p>
                   <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                    Seluruh catatan jurnal, 4 kesimpulan harian, serta ringkasan bulanan & tahunan diolah langsung di perangkatmu tanpa internet atau API eksternal.
+                    Seluruh catatan jurnal dan 4 kesimpulan {userName} diolah serta disimpan langsung di perangkatmu tanpa internet atau server eksternal.
                   </p>
                 </div>
 
                 <button
                   onClick={() => {
-                    if (inputUserName.trim()) {
-                      setUserName(inputUserName.trim());
-                    }
+                    const nextName = inputUserName.trim() || userName;
+                    setUserName(nextName);
+                    saveToPersistentStorage({
+                      selectedMoodId,
+                      userName: nextName,
+                      completedActions,
+                      journals
+                    });
                     setSettingsOpen(false);
                     showToast('Profil disimpan!');
                   }}
@@ -3429,6 +3503,13 @@ export default function App() {
                   style={{ backgroundColor: 'var(--mood-dark)' }}
                 >
                   Simpan Profil
+                </button>
+
+                <button
+                  onClick={handleClearAllJournals}
+                  className="w-full py-2.5 rounded-full text-rose-600 bg-rose-50 hover:bg-rose-100 text-xs font-bold transition"
+                >
+                  Kosongkan Semua Catatan (Mulai dari 0)
                 </button>
               </div>
             </div>

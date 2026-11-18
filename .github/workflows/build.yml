@@ -39,6 +39,47 @@ jobs:
           fi
           npx cap sync android
 
+      - name: Generate Custom Cute Pink APK Icon & Splash
+        run: |
+          npm install --no-save @capacitor/assets sharp
+          node -e "
+          const fs = require('fs');
+          const sharp = require('sharp');
+          async function prepareAssets() {
+            fs.mkdirSync('assets', { recursive: true });
+            const candidates = ['assets/icon.png', 'assets/icon.jpg', 'assets/icon.jpeg', 'assets/logo.png', 'assets/logo.jpg'];
+            const found = candidates.find(p => fs.existsSync(p));
+            if (found) {
+              const buf = await sharp(found).resize(1024, 1024, { fit: 'cover' }).png().toBuffer();
+              fs.writeFileSync('assets/icon.png', buf);
+            } else {
+              const svgIcon = \`<svg width='1024' height='1024' viewBox='0 0 140 140' xmlns='http://www.w3.org/2000/svg'>
+                <rect width='140' height='140' rx='32' fill='#F6DCE8'/>
+                <circle cx='70' cy='70' r='54' fill='#FCF2F7'/>
+                <ellipse cx='46' cy='40' rx='10' ry='16' transform='rotate(-18 46 40)' fill='#FFFFFF'/>
+                <ellipse cx='46' cy='41' rx='5' ry='10' transform='rotate(-18 46 41)' fill='#D98BAE'/>
+                <ellipse cx='94' cy='40' rx='10' ry='16' transform='rotate(18 94 40)' fill='#FFFFFF'/>
+                <ellipse cx='94' cy='41' rx='5' ry='10' transform='rotate(18 94 41)' fill='#D98BAE'/>
+                <path d='M70 14L61 38H79L70 14Z' fill='#FBBF24'/>
+                <ellipse cx='70' cy='96' rx='32' ry='26' fill='#FFFFFF'/>
+                <rect x='38' y='34' width='64' height='54' rx='27' fill='#FFFFFF'/>
+                <ellipse cx='70' cy='67' rx='19' ry='12' fill='#F6DCE8'/>
+                <circle cx='54' cy='52' r='4.2' fill='#591C39'/>
+                <circle cx='86' cy='52' r='4.2' fill='#591C39'/>
+                <path d='M70 88 C64 80, 52 84, 56 95 C60 103, 70 109, 70 109 C70 109, 80 103, 84 95 C88 84, 76 80, 70 88 Z' fill='#D98BAE'/>
+              </svg>\`;
+              await sharp(Buffer.from(svgIcon)).resize(1024, 1024).png().toFile('assets/icon.png');
+            }
+            await sharp('assets/icon.png')
+              .resize(800, 800)
+              .extend({ top: 966, bottom: 966, left: 966, right: 966, background: '#FCF2F7' })
+              .png()
+              .toFile('assets/splash.png');
+          }
+          prepareAssets();
+          "
+          npx @capacitor/assets generate --android --iconBackgroundColor '#F6DCE8' --iconBackgroundColorDark '#591C39' --splashBackgroundColor '#FCF2F7' --splashBackgroundColorDark '#591C39'
+
       - name: Grant Execute Permission for Gradlew
         run: chmod +x android/gradlew
 

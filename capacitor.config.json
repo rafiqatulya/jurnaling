@@ -1,6 +1,6 @@
 {
-  "appId": "com.lya.dearfutureme",
-  "appName": "Dear Future Me",
+  "appId": "com.lya.dearly",
+  "appName": "Dearly",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {

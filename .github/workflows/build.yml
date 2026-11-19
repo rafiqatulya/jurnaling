@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Dearly APK
 
 on:
   push:
@@ -27,9 +27,6 @@ jobs:
           java-version: '21'
 
       - name: Install Dependencies
-        env:
-          npm_config_onnxruntime_node_install_cuda: skip
-          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
         run: npm install
 
       - name: Build Web Assets (Vite)
@@ -93,5 +90,5 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Dear-Future-Me-APK
+          name: Dearly-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk

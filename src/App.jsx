@@ -1,12 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-  analyzeJournalSmart,
-  synthesizeJournalContextually,
-  computePeriodSynthesis,
-  initLocalNeuralModel,
-  subscribeEngineStatus,
-  isLocalNeuralModelReady
-} from './smartEngine';
+import { generateDearlyAnalysis, computeLocalStats } from './smartEngine';
 
 // ============================================================================
 // 1. COLLECTION `mood_messages` (12 MOOD × 10 PESAN PERSONAL = 120 MESSAGES)
@@ -249,19 +242,23 @@ const MOODS = [
 ];
 
 const MONTHS_INFO = [
-  { num: 1, short: 'Jan', full: 'Januari', days: 31 },
-  { num: 2, short: 'Feb', full: 'Februari', days: 28 },
-  { num: 3, short: 'Mar', full: 'Maret', days: 31 },
-  { num: 4, short: 'Apr', full: 'April', days: 30 },
-  { num: 5, short: 'Mei', full: 'Mei', days: 31 },
-  { num: 6, short: 'Jun', full: 'Juni', days: 30 },
-  { num: 7, short: 'Jul', full: 'Juli', days: 31 },
-  { num: 8, short: 'Agu', full: 'Agustus', days: 31 },
-  { num: 9, short: 'Sep', full: 'September', days: 30 },
-  { num: 10, short: 'Okt', full: 'Oktober', days: 31 },
-  { num: 11, short: 'Nov', full: 'November', days: 30 },
-  { num: 12, short: 'Des', full: 'Desember', days: 31 }
+  { num: 1, short: 'Jan', full: 'Januari' },
+  { num: 2, short: 'Feb', full: 'Februari' },
+  { num: 3, short: 'Mar', full: 'Maret' },
+  { num: 4, short: 'Apr', full: 'April' },
+  { num: 5, short: 'Mei', full: 'Mei' },
+  { num: 6, short: 'Jun', full: 'Juni' },
+  { num: 7, short: 'Jul', full: 'Juli' },
+  { num: 8, short: 'Agu', full: 'Agustus' },
+  { num: 9, short: 'Sep', full: 'September' },
+  { num: 10, short: 'Okt', full: 'Oktober' },
+  { num: 11, short: 'Nov', full: 'November' },
+  { num: 12, short: 'Des', full: 'Desember' }
 ];
+
+function getDaysInMonth(year, monthNum) {
+  return new Date(year, monthNum, 0).getDate();
+}
 
 // ============================================================================
 // 3. ILUSTRASI BINATANG 3D CLAY LUCU
@@ -308,101 +305,95 @@ function CuteAnimal({ type, sizeClass = 'w-full h-full' }) {
 }
 
 // ============================================================================
-// 4. PENYIMPANAN PERMANEN LOKAL (SYNCHRONOUS STORAGE ENGINE)
+// 4. PENYIMPANAN PERMANEN LOKAL (HANYA DI MEMORI HP, NOL API KEY DI KODE)
 // ============================================================================
-const STORAGE_KEY = 'dear_future_me_lya_offline_v4';
+const STORAGE_KEY = 'dearly_journal_data_v1';
 
-function loadInitialPersistentState() {
+function loadInitialState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const normalizedJournals = {};
-      if (parsed?.journals && typeof parsed.journals === 'object') {
-        Object.entries(parsed.journals).forEach(([k, val]) => {
-          if (/^\d+$/.test(k)) {
-            const dNum = parseInt(k, 10);
-            const fullKey = `2026-11-${String(dNum).padStart(2, '0')}`;
-            normalizedJournals[fullKey] = {
-              ...val,
-              year: 2026,
-              month: 11,
-              day: dNum,
-              dateStr: fullKey
-            };
-          } else if (val && typeof val === 'object') {
-            normalizedJournals[k] = val;
-          }
-        });
-      }
       return {
         selectedMoodId: parsed.selectedMoodId || 'in_love',
         userName: parsed.userName || 'Lya',
+        apiKey: parsed.apiKey || '',
+        selectedModel: parsed.selectedModel || 'gemini-2.5-flash',
         completedActions: parsed.completedActions || {},
-        journals: normalizedJournals
+        journals: parsed.journals && typeof parsed.journals === 'object' ? parsed.journals : {},
+        monthlySummaries: parsed.monthlySummaries && typeof parsed.monthlySummaries === 'object' ? parsed.monthlySummaries : {},
+        yearlySummaries: parsed.yearlySummaries && typeof parsed.yearlySummaries === 'object' ? parsed.yearlySummaries : {}
       };
     }
   } catch (err) {
-    console.error('Error loading local storage:', err);
+    console.error('Error loading Dearly storage:', err);
   }
 
-  const cleanStart = {
+  return {
     selectedMoodId: 'in_love',
     userName: 'Lya',
+    apiKey: '',
+    selectedModel: 'gemini-2.5-flash',
     completedActions: {},
-    journals: {}
+    journals: {},
+    monthlySummaries: {},
+    yearlySummaries: {}
   };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanStart));
-  } catch {}
-  return cleanStart;
 }
 
-function saveToPersistentStorage(payload) {
+function persistState(payload) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
-    console.error('Error saving local storage:', err);
+    console.error('Error saving Dearly storage:', err);
   }
 }
 
 // ============================================================================
-// 5. MAIN APPLICATION COMPONENT (`App.jsx`)
+// 5. MAIN APPLICATION COMPONENT (`Dearly`)
 // ============================================================================
 export default function App() {
-  const initialData = useMemo(() => loadInitialPersistentState(), []);
+  const initialData = useMemo(() => loadInitialState(), []);
+  const today = useMemo(() => new Date(), []);
 
-  // Navigasi dengan transisi Fade-Out -> Fade-In yang jelas
+  // Navigasi dengan transisi Fade-Out -> Fade-In
   const [currentView, setCurrentView] = useState('home');
   const [isViewTransitioning, setIsViewTransitioning] = useState(false);
 
-  // Splash Screen 3-Fase: 'idle' -> 'celebrating' (warna memenuhi + grid hilang + maskot bouncing) -> 'exiting' (fade out) -> 'hidden'
+  // Splash Screen 3-Fase: 'idle' -> 'celebrating' -> 'exiting' -> 'hidden'
   const [splashPhase, setSplashPhase] = useState('idle');
   const [splashChosenMoodId, setSplashChosenMoodId] = useState(null);
 
   const [selectedMoodId, setSelectedMoodId] = useState(initialData.selectedMoodId);
-  const [selectedYear, setSelectedYear] = useState(2026);
-  const [selectedMonth, setSelectedMonth] = useState(11);
-  const [selectedDay, setSelectedDay] = useState(19);
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth() + 1);
+  const [selectedDay, setSelectedDay] = useState(today.getDate());
   const [journalMode, setJournalMode] = useState('guided');
   const [homeSubTab, setHomeSubTab] = useState('aspirations');
   const [archiveSubTab, setArchiveSubTab] = useState('month');
   const [isFullWidthDesktop, setIsFullWidthDesktop] = useState(false);
+
+  // Profil & Kunci Akses Lokal (tidak pernah hardcoded)
   const [userName, setUserName] = useState(initialData.userName);
   const [inputUserName, setInputUserName] = useState(initialData.userName);
+  const [apiKey, setApiKey] = useState(initialData.apiKey);
+  const [inputApiKey, setInputApiKey] = useState(initialData.apiKey);
+  const [showKeyText, setShowKeyText] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(initialData.selectedModel);
+  const [inputModel, setInputModel] = useState(initialData.selectedModel);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [toastMsg, setToastMsg] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Data Jurnal & Ringkasan Bulanan / Tahunan
   const [completedActions, setCompletedActions] = useState(initialData.completedActions);
+  const [journals, setJournals] = useState(initialData.journals);
+  const [monthlySummaries, setMonthlySummaries] = useState(initialData.monthlySummaries);
+  const [yearlySummaries, setYearlySummaries] = useState(initialData.yearlySummaries);
+
   const [seenMessageIndices, setSeenMessageIndices] = useState({});
   const [currentMessageIndexByMood, setCurrentMessageIndexByMood] = useState({ in_love: 2 });
-  const [journals, setJournals] = useState(initialData.journals);
-
-  // Status pemrosesan & paket bahasa pintar lokal
-  const [isSummarizing, setIsSummarizing] = useState(false);
-  const [languagePackStatus, setLanguagePackStatus] = useState({
-    state: isLocalNeuralModelReady() ? 'ready' : 'idle',
-    progress: isLocalNeuralModelReady() ? 100 : 0
-  });
 
   const [guidedForm, setGuidedForm] = useState({
     q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: ''
@@ -414,31 +405,26 @@ export default function App() {
   const splashTimersRef = useRef([]);
 
   const makeDateKey = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const makeMonthKey = (y, m) => `${y}-${String(m).padStart(2, '0')}`;
   const currentDateKey = makeDateKey(selectedYear, selectedMonth, selectedDay);
-  const currentMonthInfo = MONTHS_INFO.find((m) => m.num === selectedMonth) || MONTHS_INFO[10];
+  const currentMonthKey = makeMonthKey(selectedYear, selectedMonth);
+  const currentYearKey = String(selectedYear);
+  const currentMonthInfo = MONTHS_INFO.find((m) => m.num === selectedMonth) || MONTHS_INFO[0];
+  const daysInSelectedMonth = getDaysInMonth(selectedYear, selectedMonth);
 
-  // Auto-load paket bahasa lokal di latar belakang jika sebelumnya sudah pernah diunduh ke cache HP
+  // Simpan seluruh state otomatis ke localStorage
   useEffect(() => {
-    const unsub = subscribeEngineStatus((st) => {
-      setLanguagePackStatus(st);
-    });
-    try {
-      if (localStorage.getItem('dfm_local_model_cached') === '1') {
-        initLocalNeuralModel();
-      }
-    } catch {}
-    return unsub;
-  }, []);
-
-  // Simpan otomatis setiap perubahan data
-  useEffect(() => {
-    saveToPersistentStorage({
+    persistState({
       selectedMoodId,
       userName,
+      apiKey,
+      selectedModel,
       completedActions,
-      journals
+      journals,
+      monthlySummaries,
+      yearlySummaries
     });
-  }, [selectedMoodId, userName, completedActions, journals]);
+  }, [selectedMoodId, userName, apiKey, selectedModel, completedActions, journals, monthlySummaries, yearlySummaries]);
 
   // Terapkan tema warna mood ke CSS Variables
   useEffect(() => {
@@ -452,7 +438,7 @@ export default function App() {
     root.style.setProperty('--mood-accent', mood.accent);
   }, [selectedMoodId]);
 
-  // Sinkronkan form jurnal saat tanggal berganti
+  // Sinkronkan form ketika pindah tanggal
   useEffect(() => {
     const entry = journals[currentDateKey];
     if (entry) {
@@ -478,12 +464,11 @@ export default function App() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => {
       setToastMsg('');
-    }, 2400);
+    }, 2800);
   };
 
   const getMoodById = (id) => MOODS.find((m) => m.id === id) || MOODS[2];
 
-  // Navigasi halaman dengan transisi Fade-Out -> Fade-In yang halus
   const navigateToView = (targetView) => {
     if (targetView === currentView && splashPhase === 'hidden') return;
     if (splashPhase !== 'hidden') {
@@ -513,7 +498,7 @@ export default function App() {
     return chosen;
   };
 
-  // Urutan Animasi Splash Screen: Pilih Mood -> Warna Mengalir Penuh + Grid Hilang + 1 Maskot Bouncing -> Fade-Out Masuk Beranda
+  // Splash Screen: Pilih Mood -> Gelombang Warna Penuh + Grid Hilang + 1 Maskot Bouncing -> Fade-Out Masuk Beranda
   const handleSelectMoodFromSplash = (moodId) => {
     if (splashPhase !== 'idle') return;
     splashTimersRef.current.forEach(clearTimeout);
@@ -523,12 +508,6 @@ export default function App() {
     setSelectedMoodId(moodId);
     setSplashPhase('celebrating');
     pickNonRepeatingMoodMessageIndex(moodId);
-    saveToPersistentStorage({
-      selectedMoodId: moodId,
-      userName,
-      completedActions,
-      journals
-    });
 
     const t1 = setTimeout(() => {
       setSplashPhase('exiting');
@@ -550,49 +529,154 @@ export default function App() {
     setSplashPhase('idle');
   };
 
-  // Simpan & Rangkum Jurnal Menggunakan Smart Context Engine / Model Bahasa Lokal
-  const handleSaveAndAnalyzeJournal = async () => {
-    setIsSummarizing(true);
+  const openSettingsModal = () => {
+    setInputUserName(userName);
+    setInputApiKey(apiKey);
+    setInputModel(selectedModel);
+    setShowKeyText(false);
+    setSettingsOpen(true);
+  };
+
+  // Agregasi Statistik Lokal (0 Token)
+  const allTimeStats = useMemo(
+    () => computeLocalStats(Object.values(journals), MOODS),
+    [journals]
+  );
+
+  const currentMonthEntries = useMemo(() => {
+    const prefix = `${currentMonthKey}-`;
+    return Object.values(journals).filter((e) => e.dateStr?.startsWith(prefix));
+  }, [journals, currentMonthKey]);
+
+  const monthlyStats = useMemo(
+    () => computeLocalStats(currentMonthEntries, MOODS),
+    [currentMonthEntries]
+  );
+
+  const currentYearEntries = useMemo(() => {
+    const prefix = `${currentYearKey}-`;
+    return Object.values(journals).filter((e) => e.dateStr?.startsWith(prefix));
+  }, [journals, currentYearKey]);
+
+  const yearlyStats = useMemo(
+    () => computeLocalStats(currentYearEntries, MOODS),
+    [currentYearEntries]
+  );
+
+  // ============================================================================
+  // SATU-SATUNYA TEMPAT PEMANGGILAN API (ANTI-LOOPING, 1 KLIK = 1 CALL)
+  // ============================================================================
+  const handleSaveJournal = async () => {
+    if (isSaving) return;
+
+    const hasAnyText =
+      Object.values(guidedForm).some((v) => v.trim().length > 0) || freeTextForm.trim().length > 0;
+
+    if (!hasAnyText) {
+      showToast('Tulis ceritamu dulu sebelum menyimpan ya 💗');
+      return;
+    }
+
     const moodObj = getMoodById(selectedMoodId);
 
-    try {
-      const smartInsights = await analyzeJournalSmart(
-        guidedForm,
-        freeTextForm,
-        moodObj,
-        journals
-      );
+    // 1. Amankan tulisan mentah & mood ke memori HP terlebih dahulu agar tidak pernah hilang
+    const existingEntry = journals[currentDateKey];
+    const baseEntry = {
+      year: selectedYear,
+      month: selectedMonth,
+      day: selectedDay,
+      dateStr: currentDateKey,
+      moodId: selectedMoodId,
+      guided: { ...guidedForm },
+      freeText: freeTextForm,
+      daily_insights: existingEntry?.daily_insights || null
+    };
 
-      const updatedEntry = {
-        year: selectedYear,
-        month: selectedMonth,
-        day: selectedDay,
-        dateStr: currentDateKey,
-        moodId: selectedMoodId,
-        guided: { ...guidedForm },
-        freeText: freeTextForm,
-        daily_insights: smartInsights
+    const journalsWithDraft = {
+      ...journals,
+      [currentDateKey]: baseEntry
+    };
+    setJournals(journalsWithDraft);
+
+    // Cek apakah API Key sudah diisi di menu Profil
+    if (!apiKey.trim()) {
+      showToast('Catatan tersimpan! Masukkan API Key di menu Profil untuk membuat ringkasan.');
+      openSettingsModal();
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Kumpulkan konteks historis super ringkas (~30-50 kata saja agar hemat token)
+      const topInt = allTimeStats.sortedInterests.slice(0, 4).map((x) => x.name).join(', ');
+      const topDrm = allTimeStats.sortedDreams.slice(0, 3).map((x) => x.name).join(', ');
+      const topHistoricalContext = [
+        topInt ? `Minat berulang: ${topInt}` : '',
+        topDrm ? `Impian berulang: ${topDrm}` : ''
+      ]
+        .filter(Boolean)
+        .join('. ');
+
+      const result = await generateDearlyAnalysis({
+        apiKey,
+        modelName: selectedModel,
+        userName,
+        dateLabel: `${selectedDay} ${currentMonthInfo.full} ${selectedYear}`,
+        monthLabel: `${currentMonthInfo.full} ${selectedYear}`,
+        yearLabel: String(selectedYear),
+        moodName: moodObj.name,
+        guidedInput: guidedForm,
+        freeTextInput: freeTextForm,
+        prevMonthlySummary: monthlySummaries[currentMonthKey] || '',
+        prevYearlySummary: yearlySummaries[currentYearKey] || '',
+        topHistoricalContext
+      });
+
+      const finalizedEntry = {
+        ...baseEntry,
+        daily_insights: result.daily_insights
       };
 
       const nextJournals = {
-        ...journals,
-        [currentDateKey]: updatedEntry
+        ...journalsWithDraft,
+        [currentDateKey]: finalizedEntry
       };
+      const nextMonthlySummaries = result.monthly_summary
+        ? { ...monthlySummaries, [currentMonthKey]: result.monthly_summary }
+        : monthlySummaries;
+      const nextYearlySummaries = result.yearly_summary
+        ? { ...yearlySummaries, [currentYearKey]: result.yearly_summary }
+        : yearlySummaries;
 
       setJournals(nextJournals);
-      saveToPersistentStorage({
+      setMonthlySummaries(nextMonthlySummaries);
+      setYearlySummaries(nextYearlySummaries);
+
+      persistState({
         selectedMoodId,
         userName,
+        apiKey,
+        selectedModel,
         completedActions,
-        journals: nextJournals
+        journals: nextJournals,
+        monthlySummaries: nextMonthlySummaries,
+        yearlySummaries: nextYearlySummaries
       });
 
-      showToast(`Jurnal ${selectedDay} ${currentMonthInfo.short} tersimpan! ✨`);
+      showToast(`Jurnal ${selectedDay} ${currentMonthInfo.short} tersimpan & dirangkum! ✨`);
       setTimeout(() => {
         insightsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 120);
+    } catch (err) {
+      if (err.message === 'INVALID_KEY') {
+        showToast('Catatan tersimpan, tapi API Key tidak valid. Cek di menu Profil.');
+      } else if (err.message === 'RATE_LIMIT') {
+        showToast('Catatan tersimpan. Kuota API sedang penuh, coba sebentar lagi.');
+      } else {
+        showToast('Catatan tersimpan di HP. Pastikan internet aktif untuk merangkum.');
+      }
     } finally {
-      setIsSummarizing(false);
+      setIsSaving(false);
     }
   };
 
@@ -600,12 +684,6 @@ export default function App() {
     const nextJournals = { ...journals };
     delete nextJournals[dateKey];
     setJournals(nextJournals);
-    saveToPersistentStorage({
-      selectedMoodId,
-      userName,
-      completedActions,
-      journals: nextJournals
-    });
     setGuidedForm({ q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '' });
     setFreeTextForm('');
     showToast('Catatan jurnal dihapus.');
@@ -613,61 +691,14 @@ export default function App() {
 
   const handleClearAllJournals = () => {
     setJournals({});
+    setMonthlySummaries({});
+    setYearlySummaries({});
     setCompletedActions({});
-    saveToPersistentStorage({
-      selectedMoodId,
-      userName,
-      completedActions: {},
-      journals: {}
-    });
     setGuidedForm({ q1: '', q2: '', q3: '', q4: '', q5: '', q6: '', q7: '', q8: '' });
     setFreeTextForm('');
     setSettingsOpen(false);
     showToast('Semua catatan dikosongkan permanen!');
   };
-
-  // Hasil Ringkasan Harian (Preview instan atau hasil tersimpan)
-  const activeDailyInsights = useMemo(() => {
-    const saved = journals[currentDateKey];
-    const moodObj = getMoodById(selectedMoodId);
-    const isSameAsSaved =
-      saved &&
-      saved.moodId === selectedMoodId &&
-      saved.freeText === freeTextForm &&
-      ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8'].every(
-        (k) => (saved.guided?.[k] || '') === (guidedForm[k] || '')
-      );
-
-    if (isSameAsSaved && saved.daily_insights) {
-      return saved.daily_insights;
-    }
-    return synthesizeJournalContextually(guidedForm, freeTextForm, moodObj, journals);
-  }, [currentDateKey, journals, guidedForm, freeTextForm, selectedMoodId]);
-
-  const allTimeSynthesis = useMemo(
-    () => computePeriodSynthesis(Object.values(journals), MOODS, 'Seluruh Catatan'),
-    [journals]
-  );
-
-  const currentMonthEntries = useMemo(() => {
-    const prefix = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-`;
-    return Object.values(journals).filter((e) => e.dateStr?.startsWith(prefix));
-  }, [journals, selectedYear, selectedMonth]);
-
-  const monthlySynthesis = useMemo(
-    () => computePeriodSynthesis(currentMonthEntries, MOODS, `${currentMonthInfo.full} ${selectedYear}`),
-    [currentMonthEntries, currentMonthInfo, selectedYear]
-  );
-
-  const currentYearEntries = useMemo(() => {
-    const prefix = `${selectedYear}-`;
-    return Object.values(journals).filter((e) => e.dateStr?.startsWith(prefix));
-  }, [journals, selectedYear]);
-
-  const yearlySynthesis = useMemo(
-    () => computePeriodSynthesis(currentYearEntries, MOODS, `Tahun ${selectedYear}`),
-    [currentYearEntries, selectedYear]
-  );
 
   const activeMoodIndex = MOODS.findIndex((m) => m.id === selectedMoodId);
   const activeMood = MOODS[activeMoodIndex >= 0 ? activeMoodIndex : 2];
@@ -682,28 +713,32 @@ export default function App() {
 
   const interestFreqMap = useMemo(() => {
     const map = {};
-    allTimeSynthesis.sortedInterests.forEach((it) => {
+    allTimeStats.sortedInterests.forEach((it) => {
       map[it.name.toLowerCase()] = it.count;
     });
     return map;
-  }, [allTimeSynthesis]);
+  }, [allTimeStats]);
 
   const dreamFreqMap = useMemo(() => {
     const map = {};
-    allTimeSynthesis.sortedDreams.forEach((d) => {
+    allTimeStats.sortedDreams.forEach((d) => {
       map[d.name.toLowerCase()] = d.count;
     });
     return map;
-  }, [allTimeSynthesis]);
+  }, [allTimeStats]);
+
+  const currentEntryInsights = journals[currentDateKey]?.daily_insights || null;
 
   const latestSavedEntry = useMemo(() => {
-    if (journals[currentDateKey]) return journals[currentDateKey];
-    const allSorted = Object.values(journals).sort((a, b) => b.dateStr.localeCompare(a.dateStr));
-    return allSorted[0] || null;
+    if (journals[currentDateKey]?.daily_insights) return journals[currentDateKey];
+    const allWithInsights = Object.values(journals)
+      .filter((e) => e.daily_insights)
+      .sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+    return allWithInsights[0] || null;
   }, [journals, currentDateKey]);
 
   const homeRecommendedActions = latestSavedEntry?.daily_insights?.personal_growth?.recommended_actions || [
-    'Tulis jurnal singkat malam ini',
+    'Tulis jurnal singkat hari ini',
     'Pilih 1 prioritas utama untuk besok'
   ];
 
@@ -714,6 +749,15 @@ export default function App() {
 
   const navIndex = currentView === 'home' ? 0 : currentView === 'journal' ? 1 : 2;
 
+  // Bar 12 hari terakhir pada bulan terpilih untuk Mood Journey
+  const journeyDays = useMemo(() => {
+    const endDay = Math.min(daysInSelectedMonth, Math.max(12, selectedDay));
+    const startDay = Math.max(1, endDay - 11);
+    const arr = [];
+    for (let d = startDay; d <= endDay; d++) arr.push(d);
+    return arr;
+  }, [daysInSelectedMonth, selectedDay]);
+
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-start py-0 sm:py-6 px-0 sm:px-4">
       {/* Top Desktop Preview Controls */}
@@ -721,7 +765,7 @@ export default function App() {
         <div className="flex items-center gap-2.5">
           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: 'var(--mood-main)' }} />
           <span className="font-bold text-slate-800 text-sm tracking-tight">
-            Dear Future Me · {userName}'s Journal
+            Dearly · {userName}'s Journal
           </span>
           <span
             className="text-xs px-2.5 py-0.5 rounded-full font-semibold"
@@ -744,10 +788,7 @@ export default function App() {
             {isFullWidthDesktop ? 'Tampilan: Lebar' : 'Tampilan: HP'}
           </button>
           <button
-            onClick={() => {
-              setInputUserName(userName);
-              setSettingsOpen(true);
-            }}
+            onClick={openSettingsModal}
             className="text-xs font-semibold px-3 py-1.5 rounded-full text-white transition"
             style={{ backgroundColor: 'var(--mood-main)' }}
           >
@@ -769,7 +810,6 @@ export default function App() {
               splashPhase === 'exiting' ? 'opacity-0 scale-105 pointer-events-none' : 'opacity-100 scale-100'
             }`}
           >
-            {/* Gelombang Warna Penuh Saat Mood Dipilih */}
             {splashPhase !== 'idle' && (
               <div
                 className="splash-color-wave"
@@ -777,20 +817,19 @@ export default function App() {
               />
             )}
 
-            {/* Dekorasi Lingkaran Lembut */}
             <div className="absolute -top-12 -right-12 w-40 h-40 rounded-full bg-white/35 pointer-events-none" />
             <div className="absolute bottom-20 -left-14 w-36 h-36 rounded-full bg-white/30 pointer-events-none" />
 
-            {/* Top Brand Bar (Memudar saat fase celebrating) */}
+            {/* Top Brand Bar */}
             <div
               className={`relative z-10 flex items-center justify-between transition-all duration-400 ${
                 splashPhase !== 'idle' ? 'opacity-0 -translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'
               }`}
             >
-              <div className="flex items-center gap-2 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-white">
+              <div className="flex items-center gap-2 bg-white/80 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-sm border border-white">
                 <span className="text-xs">🐾</span>
-                <span className="text-[11px] font-extrabold text-slate-700 tracking-wide">
-                  DEAR FUTURE ME
+                <span className="text-[11px] font-extrabold text-slate-700 tracking-wider uppercase">
+                  DEARLY
                 </span>
               </div>
               <span className="text-[11px] font-bold text-slate-700 bg-white/80 px-3 py-1.5 rounded-full shadow-sm">
@@ -812,12 +851,10 @@ export default function App() {
               </h1>
             </div>
 
-            {/* Center Mascot Stage: Saat dipilih, hanya karakter ini yang tampil di tengah sambil bouncing! */}
+            {/* Center Mascot Stage */}
             <div
               className={`relative z-20 flex flex-col items-center justify-center transition-all duration-500 ${
-                splashPhase !== 'idle'
-                  ? 'flex-1 -mt-12 scale-110'
-                  : 'my-1'
+                splashPhase !== 'idle' ? 'flex-1 -mt-12 scale-110' : 'my-1'
               }`}
             >
               <div className="relative flex items-center justify-center">
@@ -832,12 +869,10 @@ export default function App() {
 
                 <div
                   className={`rounded-[34px] bg-white/85 backdrop-blur-md border-2 border-white flex items-center justify-center shadow-lg transition-all duration-500 ${
-                    splashPhase !== 'idle'
-                      ? 'w-44 h-44 animate-mascot-bounce'
-                      : 'w-28 h-28'
+                    splashPhase !== 'idle' ? 'w-44 h-44 animate-mascot-bounce' : 'w-28 h-28'
                   }`}
                 >
-                  <div className={splashPhase !== 'idle' ? 'w-32 h-32' : 'w-22 h-22 animate-float'}>
+                  <div className={splashPhase !== 'idle' ? 'w-32 h-32' : 'w-20 h-20 animate-float'}>
                     <CuteAnimal
                       type={splashMoodObj.animalType}
                       sizeClass={splashPhase !== 'idle' ? 'w-32 h-32' : 'w-20 h-20'}
@@ -846,7 +881,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Nama Mood & Tagline Muncul Hangat Hanya Setelah Dipilih */}
               {splashPhase !== 'idle' && (
                 <div className="text-center mt-5 px-4 animate-sparkle-pop">
                   <span className="inline-block px-3.5 py-1 rounded-full bg-white/25 backdrop-blur-sm text-white text-[11px] font-extrabold tracking-widest uppercase mb-1.5">
@@ -862,7 +896,7 @@ export default function App() {
               )}
             </div>
 
-            {/* 12 Kategori Mood: 4x3 Pas 1 Layar (Tanpa Scroll, Hilang Saat Dipilih) */}
+            {/* 12 Kategori Mood: 4x3 Pas 1 Layar (Tanpa Scroll) */}
             <div
               className={`relative z-10 bg-white/85 backdrop-blur-md rounded-[28px] p-2.5 border border-white shadow-sm transition-all duration-400 ease-in-out ${
                 splashPhase !== 'idle'
@@ -934,20 +968,17 @@ export default function App() {
                     </span>
                   </button>
                   <button
-                    onClick={() => {
-                      setInputUserName(userName);
-                      setSettingsOpen(true);
-                    }}
+                    onClick={openSettingsModal}
                     className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-700 relative hover:scale-105 active:scale-95 transition"
-                    title="Profil"
+                    title="Profil & Pengaturan"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <span
-                      className="w-2.5 h-2.5 rounded-full absolute top-2 right-2"
-                      style={{ backgroundColor: 'var(--mood-main)' }}
-                    />
+                    {!apiKey.trim() && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 absolute top-2 right-2" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -956,7 +987,7 @@ export default function App() {
               <div className="mb-5">
                 <div className="flex items-center justify-between mb-2 px-1">
                   <span className="text-xs font-extrabold tracking-tight" style={{ color: 'var(--mood-dark)' }}>
-                    Dear Future Me · A Little Note for You
+                    Dearly · A Little Note for You
                   </span>
                   <button
                     onClick={openSplashMoodScreen}
@@ -1122,15 +1153,15 @@ export default function App() {
                     className="text-[11px] font-extrabold px-3 py-1 rounded-full"
                     style={{ backgroundColor: 'var(--mood-pill)', color: 'var(--mood-dark)' }}
                   >
-                    Kalender 1-{currentMonthInfo.days} →
+                    Kalender 1-{daysInSelectedMonth} →
                   </button>
                 </div>
                 <div className="h-24 flex items-end justify-between gap-1.5 pt-4 px-1">
-                  {[2, 4, 5, 7, 9, 11, 12, 14, 15, 16, 18, 19].map((d) => {
+                  {journeyDays.map((d) => {
                     const dKey = makeDateKey(selectedYear, selectedMonth, d);
                     const entry = journals[dKey];
                     const m = entry ? getMoodById(entry.moodId) : activeMood;
-                    const heightPct = entry ? m.energyScore : 42;
+                    const heightPct = entry ? m.energyScore : 38;
                     const barColor = entry ? m.hex : '#CBD5E1';
                     return (
                       <div
@@ -1187,21 +1218,21 @@ export default function App() {
                   const pastelBgSet = ['#F6DCE8', '#E2DCF8', '#D8ECE2'];
                   let items = [];
                   if (homeSubTab === 'aspirations') {
-                    items = allTimeSynthesis.sortedDreams.slice(0, 3).map((d, idx) => ({
+                    items = allTimeStats.sortedDreams.slice(0, 3).map((d, idx) => ({
                       title: d.name,
                       sub: `${d.count}x · ${d.count >= 2 ? 'Konsisten' : 'Baru 1x'}`,
                       icon: idx === 0 ? '🎓' : idx === 1 ? '💼' : '🌍',
                       bg: pastelBgSet[idx % 3]
                     }));
                   } else if (homeSubTab === 'interests') {
-                    items = allTimeSynthesis.sortedInterests.slice(0, 3).map((it, idx) => ({
+                    items = allTimeStats.sortedInterests.slice(0, 3).map((it, idx) => ({
                       title: it.name,
                       sub: `${it.count}x · ${it.count >= 2 ? 'Rutin' : 'Baru 1x'}`,
                       icon: idx === 0 ? '💻' : idx === 1 ? '🎸' : '✍️',
                       bg: pastelBgSet[idx % 3]
                     }));
                   } else {
-                    items = allTimeSynthesis.sortedPatterns.slice(0, 3).map((p, idx) => ({
+                    items = allTimeStats.sortedPatterns.slice(0, 3).map((p, idx) => ({
                       title: p.name,
                       sub: `${p.count}x tercatat`,
                       icon: idx === 0 ? '🔋' : idx === 1 ? '💡' : '🕰️',
@@ -1259,16 +1290,9 @@ export default function App() {
                   return (
                     <div
                       key={key}
-                      onClick={() => {
-                        const nextCompleted = { ...completedActions, [key]: !completedActions[key] };
-                        setCompletedActions(nextCompleted);
-                        saveToPersistentStorage({
-                          selectedMoodId,
-                          userName,
-                          completedActions: nextCompleted,
-                          journals
-                        });
-                      }}
+                      onClick={() =>
+                        setCompletedActions((prev) => ({ ...prev, [key]: !prev[key] }))
+                      }
                       className="pastel-card p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:scale-[1.01] active:scale-[0.99] transition"
                     >
                       <div className="flex items-center gap-3">
@@ -1287,7 +1311,9 @@ export default function App() {
                             {act}
                           </h4>
                           <p className="text-[10px] text-slate-500 mt-0.5">
-                            Rekomendasi jurnal {latestSavedEntry?.day || selectedDay} {currentMonthInfo.short}
+                            {latestSavedEntry
+                              ? `Rekomendasi jurnal ${latestSavedEntry.day} ${MONTHS_INFO[latestSavedEntry.month - 1]?.short || ''}`
+                              : 'Siap menemani harimu'}
                           </p>
                         </div>
                       </div>
@@ -1319,7 +1345,7 @@ export default function App() {
                   ←
                 </button>
                 <div className="text-center">
-                  <h2 className="text-sm font-extrabold text-slate-800">My Little Daily Journal</h2>
+                  <h2 className="text-sm font-extrabold text-slate-800">Dearly Daily Journal</h2>
                   <p className="text-[11px] text-slate-500">Daily diary · Free writing</p>
                 </div>
                 <button
@@ -1339,7 +1365,7 @@ export default function App() {
                     onChange={(e) => {
                       const newM = Number(e.target.value);
                       setSelectedMonth(newM);
-                      const maxD = MONTHS_INFO.find((x) => x.num === newM)?.days || 30;
+                      const maxD = getDaysInMonth(selectedYear, newM);
                       if (selectedDay > maxD) setSelectedDay(maxD);
                     }}
                     className="text-xs font-extrabold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full focus:outline-none"
@@ -1356,7 +1382,7 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
-                  {Array.from({ length: currentMonthInfo.days }, (_, i) => i + 1).map((d) => {
+                  {Array.from({ length: daysInSelectedMonth }, (_, i) => i + 1).map((d) => {
                     const dKey = makeDateKey(selectedYear, selectedMonth, d);
                     const entry = journals[dKey];
                     const isCurrent = d === selectedDay;
@@ -1424,9 +1450,9 @@ export default function App() {
                     {[
                       { id: 'q1', label: '1. Hari ini aku merasa...', placeholder: 'Ceritakan perasaan dan energimu hari ini...' },
                       { id: 'q2', label: '2. Hal paling menyenangkan hari ini...', placeholder: 'Momen kecil atau pencapaian yang bikin tersenyum...' },
-                      { id: 'q3', label: '3. Hal yang sedikit mengganggu pikiranku...', placeholder: 'Kekhawatiran, kelelahan, atau kebiasaan yang menghambat...' },
+                      { id: 'q3', label: '3. Hal yang sedikit mengganggu pikiranku...', placeholder: 'Kekhawatiran, kelelahan, atau hal yang mengganjal...' },
                       { id: 'q4', label: '4. Satu hal yang aku syukuri...', placeholder: 'Hal sederhana yang membuatmu merasa cukup hari ini...' },
-                      { id: 'q5', label: '5. Hal baru yang aku pikirkan atau pelajari hari ini...', placeholder: 'Ide, topik menarik, atau pelajaran hidup...' },
+                      { id: 'q5', label: '5. Hal baru yang aku pikirkan atau pelajari hari ini...', placeholder: 'Ide, obrolan bermakna, atau pelajaran hidup...' },
                       { id: 'q6', label: '6. Sesuatu yang ingin aku coba jadikan hobi atau rutinitas...', placeholder: 'Contoh: gitar listrik, Pilates, menulis, membaca...' },
                       { id: 'q7', label: '7. Impian, cita-cita, atau kehidupan masa depan yang sempat aku bayangkan hari ini...', placeholder: 'Karier, S2, kemandirian finansial, bisnis sendiri...' },
                       { id: 'q8', label: '8. Besok aku ingin...', placeholder: 'Langkah kecil yang ingin dilakukan besok...' }
@@ -1466,14 +1492,14 @@ export default function App() {
                 )}
               </div>
 
-              {/* Save Button */}
+              {/* Save Button (Satu-satunya pemicu pemrosesan) */}
               <button
-                onClick={handleSaveAndAnalyzeJournal}
-                disabled={isSummarizing}
-                className="w-full py-4 rounded-full text-white font-extrabold text-sm shadow-lg hover:opacity-95 active:scale-[0.99] transition flex items-center justify-center gap-2 mb-6 disabled:opacity-70"
+                onClick={handleSaveJournal}
+                disabled={isSaving}
+                className="w-full py-4 rounded-full text-white font-extrabold text-sm shadow-lg hover:opacity-95 active:scale-[0.99] transition flex items-center justify-center gap-2 mb-6 disabled:opacity-65"
                 style={{ backgroundColor: 'var(--mood-dark)' }}
               >
-                <span>{isSummarizing ? 'Menyusun Ringkasan...' : 'Simpan Jurnal ✨'}</span>
+                <span>{isSaving ? 'Menyimpan & Merangkum...' : 'Simpan Jurnal ✨'}</span>
               </button>
 
               {/* ================= 4 KESIMPULAN RINGKAS ================= */}
@@ -1500,157 +1526,176 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Card 01: Self Reflection */}
-                <div className="pastel-card p-4 border-l-4" style={{ borderLeftColor: 'var(--mood-main)' }}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: 'var(--mood-accent)' }}>
-                      01 · Self Reflection
-                    </span>
-                    <span className="text-xs">🪞</span>
+                {!currentEntryInsights ? (
+                  <div className="pastel-card p-6 text-center">
+                    <p className="text-xs font-bold text-slate-600 leading-relaxed">
+                      Tulis catatanmu di atas lalu tekan <strong>Simpan Jurnal ✨</strong> untuk melihat 4 kesimpulan, serta pembaruan ringkasan bulanan & tahunanmu secara otomatis.
+                    </p>
                   </div>
-                  <p className="text-xs font-bold text-slate-700 leading-relaxed mb-2.5">
-                    {activeDailyInsights.self_reflection?.summary}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div className="rounded-2xl p-3 bg-emerald-50/75 border border-emerald-100">
-                      <span className="text-[10px] font-extrabold uppercase text-emerald-800 block mb-1">
-                        💪 Hal Baik
-                      </span>
-                      <ul className="text-[11px] leading-relaxed font-medium text-emerald-950 space-y-1.5 list-disc list-inside">
-                        {(activeDailyInsights.self_reflection?.strengths || []).map((s, i) => (
-                          <li key={i}>{s}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="rounded-2xl p-3 bg-amber-50/80 border border-amber-100">
-                      <span className="text-[10px] font-extrabold uppercase text-amber-800 block mb-1">
-                        🔍 Perlu Diperhatikan
-                      </span>
-                      <ul className="text-[11px] leading-relaxed font-medium text-amber-950 space-y-1.5 list-disc list-inside">
-                        {(activeDailyInsights.self_reflection?.areas_to_improve || []).map((a, i) => (
-                          <li key={i}>{a}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card 02: Interests & Hobbies */}
-                <div className="pastel-card p-4 border-l-4" style={{ borderLeftColor: '#F2A477' }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-600">
-                      02 · Interests & Hobbies
-                    </span>
-                    <span className="text-xs">🎨</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {(activeDailyInsights.interests_and_hobbies?.interests || []).map((interest, i) => {
-                      const count = interestFreqMap[interest.toLowerCase()] || 1;
-                      const isRecurring = count >= 2;
-                      return (
-                        <span
-                          key={i}
-                          className="text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1"
-                          style={{
-                            backgroundColor: isRecurring ? 'var(--mood-pill)' : '#F1F5F9',
-                            color: isRecurring ? 'var(--mood-dark)' : '#475569'
-                          }}
-                        >
-                          <span>{interest}</span>
-                          <span className="text-[9px] px-1.5 rounded-full bg-white/80">
-                            {isRecurring ? `${count}x` : '1x'}
-                          </span>
+                ) : (
+                  <>
+                    {/* Card 01: Self Reflection */}
+                    <div className="pastel-card p-4 border-l-4" style={{ borderLeftColor: 'var(--mood-main)' }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: 'var(--mood-accent)' }}>
+                          01 · Self Reflection
                         </span>
-                      );
-                    })}
-                  </div>
-                  <div className="rounded-2xl p-3 bg-orange-50/70 border border-orange-100">
-                    <span className="text-[10px] font-extrabold uppercase text-orange-800 block mb-1">
-                      🌱 Potensi Rutinitas
-                    </span>
-                    <ul className="text-[11px] leading-relaxed font-medium text-orange-950 space-y-1 list-disc list-inside">
-                      {(activeDailyInsights.interests_and_hobbies?.potential_hobbies || []).map((h, i) => (
-                        <li key={i}>{h}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-
-                {/* Card 03: Dreams & Future Aspirations */}
-                <div className="pastel-card p-4 border-l-4" style={{ borderLeftColor: '#83AEDD' }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-sky-700">
-                      03 · Dreams & Future Aspirations
-                    </span>
-                    <span className="text-xs">🚀</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {[
-                      ...(activeDailyInsights.future_aspirations?.dreams || []).map((t) => ({ type: 'Impian', text: t })),
-                      ...(activeDailyInsights.future_aspirations?.career_goals || []).map((t) => ({ type: 'Karier', text: t })),
-                      ...(activeDailyInsights.future_aspirations?.life_goals || []).map((t) => ({ type: 'Hidup', text: t }))
-                    ].map((item, i) => {
-                      const cleanKey = item.text.replace(/\s*\(dari catatan sebelumnya\)/i, '').toLowerCase();
-                      const count = dreamFreqMap[cleanKey] || 1;
-                      const isCore = count >= 2;
-                      return (
-                        <div
-                          key={i}
-                          className="p-2.5 rounded-2xl bg-sky-50/75 border border-sky-100 flex items-center justify-between gap-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white text-sky-700 shrink-0">
-                              {item.type}
-                            </span>
-                            <p className="text-xs font-bold text-slate-800 leading-snug">{item.text}</p>
-                          </div>
-                          <span
-                            className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
-                              isCore ? 'bg-sky-200/80 text-sky-900' : 'bg-slate-200/70 text-slate-600'
-                            }`}
-                          >
-                            {isCore ? `Konsisten (${count}x)` : 'Baru 1x'}
+                        <span className="text-xs">🪞</span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-700 leading-relaxed mb-2.5">
+                        {currentEntryInsights.self_reflection?.summary}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="rounded-2xl p-3 bg-emerald-50/75 border border-emerald-100">
+                          <span className="text-[10px] font-extrabold uppercase text-emerald-800 block mb-1">
+                            💪 Hal Baik
                           </span>
+                          <ul className="text-[11px] leading-relaxed font-medium text-emerald-950 space-y-1.5 list-disc list-inside">
+                            {(currentEntryInsights.self_reflection?.strengths || []).map((s, i) => (
+                              <li key={i}>{s}</li>
+                            ))}
+                          </ul>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                        <div className="rounded-2xl p-3 bg-amber-50/80 border border-amber-100">
+                          <span className="text-[10px] font-extrabold uppercase text-amber-800 block mb-1">
+                            🔍 Perlu Diperhatikan
+                          </span>
+                          <ul className="text-[11px] leading-relaxed font-medium text-amber-950 space-y-1.5 list-disc list-inside">
+                            {(currentEntryInsights.self_reflection?.areas_to_improve || []).map((a, i) => (
+                              <li key={i}>{a}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Card 04: Personal Growth & Next Steps */}
-                <div className="p-4 rounded-[28px] text-white shadow-md" style={{ backgroundColor: 'var(--mood-dark)' }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-white/80">
-                      04 · Personal Growth & Next Steps
-                    </span>
-                    <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-bold">
-                      Rekomendasi
-                    </span>
-                  </div>
-                  <div className="rounded-2xl bg-white/10 p-3 mb-2.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/75 block mb-1">
-                      💡 Inti Pelajaran
-                    </span>
-                    <ul className="text-[11px] leading-relaxed text-white/95 space-y-1.5 list-disc list-inside">
-                      {(activeDailyInsights.personal_growth?.lessons_learned || []).map((l, i) => (
-                        <li key={i}>{l}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="rounded-2xl bg-white text-slate-800 p-3">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider block mb-1.5" style={{ color: 'var(--mood-dark)' }}>
-                      🎯 Langkah Kecil Besok
-                    </span>
-                    <ul className="text-[11px] leading-relaxed font-bold space-y-1.5">
-                      {(activeDailyInsights.personal_growth?.recommended_actions || []).map((a, i) => (
-                        <li key={i} className="flex items-start gap-1.5">
-                          <span style={{ color: 'var(--mood-main)' }}>✔</span>
-                          <span>{a}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+                    {/* Card 02: Interests & Hobbies */}
+                    <div className="pastel-card p-4 border-l-4" style={{ borderLeftColor: '#F2A477' }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-orange-600">
+                          02 · Interests & Hobbies
+                        </span>
+                        <span className="text-xs">🎨</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {(currentEntryInsights.interests_and_hobbies?.interests || []).map((interest, i) => {
+                          const count = interestFreqMap[interest.toLowerCase()] || 1;
+                          const isRecurring = count >= 2;
+                          return (
+                            <span
+                              key={i}
+                              className="text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1"
+                              style={{
+                                backgroundColor: isRecurring ? 'var(--mood-pill)' : '#F1F5F9',
+                                color: isRecurring ? 'var(--mood-dark)' : '#475569'
+                              }}
+                            >
+                              <span>{interest}</span>
+                              <span className="text-[9px] px-1.5 rounded-full bg-white/80">
+                                {isRecurring ? `${count}x` : '1x'}
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="rounded-2xl p-3 bg-orange-50/70 border border-orange-100">
+                        <span className="text-[10px] font-extrabold uppercase text-orange-800 block mb-1">
+                          🌱 Potensi Rutinitas
+                        </span>
+                        <ul className="text-[11px] leading-relaxed font-medium text-orange-950 space-y-1 list-disc list-inside">
+                          {(currentEntryInsights.interests_and_hobbies?.potential_hobbies || []).map((h, i) => (
+                            <li key={i}>{h}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Card 03: Dreams & Future Aspirations */}
+                    <div className="pastel-card p-4 border-l-4" style={{ borderLeftColor: '#83AEDD' }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-sky-700">
+                          03 · Dreams & Future Aspirations
+                        </span>
+                        <span className="text-xs">🚀</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {(() => {
+                          const list = [
+                            ...(currentEntryInsights.future_aspirations?.dreams || []).map((t) => ({ type: 'Impian', text: t })),
+                            ...(currentEntryInsights.future_aspirations?.career_goals || []).map((t) => ({ type: 'Karier', text: t })),
+                            ...(currentEntryInsights.future_aspirations?.life_goals || []).map((t) => ({ type: 'Hidup', text: t }))
+                          ];
+                          if (list.length === 0) {
+                            return (
+                              <p className="text-xs text-slate-400">
+                                Belum ada impian spesifik yang tertulis pada catatan hari ini.
+                              </p>
+                            );
+                          }
+                          return list.map((item, i) => {
+                            const count = dreamFreqMap[item.text.toLowerCase()] || 1;
+                            const isCore = count >= 2;
+                            return (
+                              <div
+                                key={i}
+                                className="p-2.5 rounded-2xl bg-sky-50/75 border border-sky-100 flex items-center justify-between gap-2"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-white text-sky-700 shrink-0">
+                                    {item.type}
+                                  </span>
+                                  <p className="text-xs font-bold text-slate-800 leading-snug">{item.text}</p>
+                                </div>
+                                <span
+                                  className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                                    isCore ? 'bg-sky-200/80 text-sky-900' : 'bg-slate-200/70 text-slate-600'
+                                  }`}
+                                >
+                                  {isCore ? `Konsisten (${count}x)` : 'Baru 1x'}
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Card 04: Personal Growth & Next Steps */}
+                    <div className="p-4 rounded-[28px] text-white shadow-md" style={{ backgroundColor: 'var(--mood-dark)' }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-white/80">
+                          04 · Personal Growth & Next Steps
+                        </span>
+                        <span className="text-[10px] bg-white/20 px-2.5 py-0.5 rounded-full font-bold">
+                          Rekomendasi
+                        </span>
+                      </div>
+                      <div className="rounded-2xl bg-white/10 p-3 mb-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/75 block mb-1">
+                          💡 Inti Pelajaran
+                        </span>
+                        <ul className="text-[11px] leading-relaxed text-white/95 space-y-1.5 list-disc list-inside">
+                          {(currentEntryInsights.personal_growth?.lessons_learned || []).map((l, i) => (
+                            <li key={i}>{l}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-2xl bg-white text-slate-800 p-3">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider block mb-1.5" style={{ color: 'var(--mood-dark)' }}>
+                          🎯 Langkah Kecil Besok
+                        </span>
+                        <ul className="text-[11px] leading-relaxed font-bold space-y-1.5">
+                          {(currentEntryInsights.personal_growth?.recommended_actions || []).map((a, i) => (
+                            <li key={i} className="flex items-start gap-1.5">
+                              <span style={{ color: 'var(--mood-main)' }}>✔</span>
+                              <span>{a}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </section>
           )}
@@ -1673,17 +1718,17 @@ export default function App() {
                         className="text-[10px] font-extrabold px-2 py-0.5 rounded-full"
                         style={{ backgroundColor: 'var(--mood-pill)', color: 'var(--mood-dark)' }}
                       >
-                        Dear Future Me
+                        Dearly
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500">Arsip Harian & Perkembangan Diri</p>
                   </div>
                 </div>
                 <button
-                  onClick={openSplashMoodScreen}
+                  onClick={openSettingsModal}
                   className="text-xs font-bold px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
                 >
-                  Ganti Mood
+                  ⚙️ Profil
                 </button>
               </div>
 
@@ -1722,7 +1767,8 @@ export default function App() {
                             key={m.num}
                             onClick={() => {
                               setSelectedMonth(m.num);
-                              if (selectedDay > m.days) setSelectedDay(m.days);
+                              const maxD = getDaysInMonth(selectedYear, m.num);
+                              if (selectedDay > maxD) setSelectedDay(maxD);
                             }}
                             className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition ${
                               active ? 'text-white shadow-sm' : 'bg-white/80 text-slate-600'
@@ -1735,6 +1781,7 @@ export default function App() {
                       })}
                     </div>
 
+                    {/* Ringkasan Bulan Berjalan (otomatis terupdate saat tombol Simpan ditekan) */}
                     <div className="p-4 rounded-[28px] text-white shadow-md" style={{ backgroundColor: 'var(--mood-dark)' }}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
@@ -1745,16 +1792,17 @@ export default function App() {
                         </span>
                       </div>
                       <p className="text-xs text-white/95 leading-relaxed mt-2">
-                        {monthlySynthesis.narrativeSummary}
+                        {monthlySummaries[currentMonthKey] ||
+                          `Belum ada ringkasan untuk ${currentMonthInfo.full} ${selectedYear}. Ringkasan bulan berjalan akan terisi otomatis begitu kamu menyimpan catatan jurnal di bulan ini.`}
                       </p>
-                      {monthlySynthesis.strengthList.length > 0 && (
+                      {monthlyStats.strengthList.length > 0 && (
                         <div className="mt-3 pt-2.5 border-t border-white/15 grid grid-cols-2 gap-2">
                           <div className="bg-white/10 rounded-2xl p-2.5">
                             <span className="text-[10px] font-extrabold uppercase text-white/75 block mb-1">
                               🌟 Hal Baik Bulan Ini
                             </span>
                             <ul className="text-[11px] space-y-1 list-disc list-inside text-white/95">
-                              {monthlySynthesis.strengthList.slice(0, 2).map((s, idx) => (
+                              {monthlyStats.strengthList.slice(0, 2).map((s, idx) => (
                                 <li key={idx} className="line-clamp-2">{s}</li>
                               ))}
                             </ul>
@@ -1764,7 +1812,7 @@ export default function App() {
                               🎯 Fokus Utama
                             </span>
                             <ul className="text-[11px] space-y-1 list-disc list-inside text-white/95">
-                              {monthlySynthesis.sortedInterests.slice(0, 2).map((it, idx) => (
+                              {monthlyStats.sortedInterests.slice(0, 2).map((it, idx) => (
                                 <li key={idx} className="truncate">{it.name} ({it.count}x)</li>
                               ))}
                             </ul>
@@ -1780,7 +1828,7 @@ export default function App() {
                             {currentMonthInfo.full} {selectedYear} · Arsip {userName}
                           </h3>
                           <p className="text-[11px] text-slate-500">
-                            Pilih tanggal 1–{currentMonthInfo.days}
+                            Pilih tanggal 1–{daysInSelectedMonth}
                           </p>
                         </div>
                         <span
@@ -1792,7 +1840,7 @@ export default function App() {
                       </div>
 
                       <div className="grid grid-cols-6 gap-2">
-                        {Array.from({ length: currentMonthInfo.days }, (_, i) => i + 1).map((d) => {
+                        {Array.from({ length: daysInSelectedMonth }, (_, i) => i + 1).map((d) => {
                           const dKey = makeDateKey(selectedYear, selectedMonth, d);
                           const entry = journals[dKey];
                           const isSelected = d === selectedDay;
@@ -1883,7 +1931,8 @@ export default function App() {
                                 </div>
                               </div>
                               <p className="text-xs font-bold text-slate-700 leading-relaxed mb-2 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                                {selEntry.daily_insights?.self_reflection?.summary}
+                                {selEntry.daily_insights?.self_reflection?.summary ||
+                                  'Catatan tersimpan. Buka lalu tekan Simpan Jurnal untuk melihat ringkasannya.'}
                               </p>
                               <div className="flex flex-wrap gap-1.5">
                                 {(selEntry.daily_insights?.interests_and_hobbies?.interests || []).map((t, i) => (
@@ -1927,15 +1976,16 @@ export default function App() {
                         </span>
                       </div>
                       <p className="text-xs text-white/95 leading-relaxed mt-2">
-                        {yearlySynthesis.narrativeSummary}
+                        {yearlySummaries[currentYearKey] ||
+                          `Belum ada ringkasan tahun ${selectedYear}. Ringkasan tahun berjalan akan langsung terisi dan terus berkembang setiap kali kamu menyimpan jurnal.`}
                       </p>
-                      {yearlySynthesis.lessonList.length > 0 && (
+                      {yearlyStats.lessonList.length > 0 && (
                         <div className="mt-3 pt-2.5 border-t border-white/15">
                           <span className="text-[10px] font-extrabold uppercase text-white/75 block mb-1">
-                            💡 Pelajaran Hidup Terpenting Tahun Ini:
+                            💡 Pelajaran Hidup Tahun Ini:
                           </span>
                           <ul className="text-[11px] leading-relaxed space-y-1 list-disc list-inside text-white/95">
-                            {yearlySynthesis.lessonList.map((lesson, idx) => (
+                            {yearlyStats.lessonList.slice(0, 3).map((lesson, idx) => (
                               <li key={idx}>{lesson}</li>
                             ))}
                           </ul>
@@ -2005,10 +2055,10 @@ export default function App() {
                         My Personal Growth Dashboard
                       </span>
                       <h3 className="font-serif-editorial text-xl font-bold mt-1">
-                        Dear Future {userName} 💗
+                        Dearly, {userName} 💗
                       </h3>
                       <p className="text-xs text-white/85 mt-1 leading-relaxed">
-                        Akumulasi minat, impian, dan pola dirimu dari {allTimeSynthesis.totalEntries} catatan jurnal.
+                        Akumulasi minat, impian, dan pola dirimu dari {allTimeStats.totalEntries} catatan jurnal.
                       </p>
                     </div>
 
@@ -2017,8 +2067,8 @@ export default function App() {
                         1. My Recurring Interests
                       </h4>
                       <div className="flex flex-wrap gap-2">
-                        {allTimeSynthesis.sortedInterests.length > 0 ? (
-                          allTimeSynthesis.sortedInterests.map((item, i) => {
+                        {allTimeStats.sortedInterests.length > 0 ? (
+                          allTimeStats.sortedInterests.map((item, i) => {
                             const isRecurring = item.count >= 2;
                             return (
                               <div
@@ -2046,8 +2096,8 @@ export default function App() {
                         2. My Future Aspirations
                       </h4>
                       <div className="space-y-2">
-                        {allTimeSynthesis.sortedDreams.length > 0 ? (
-                          allTimeSynthesis.sortedDreams.map((d, i) => {
+                        {allTimeStats.sortedDreams.length > 0 ? (
+                          allTimeStats.sortedDreams.map((d, i) => {
                             const isConsistent = d.count >= 2;
                             return (
                               <div
@@ -2084,9 +2134,9 @@ export default function App() {
                       <h4 className="text-xs font-extrabold uppercase tracking-wider mb-2" style={{ color: 'var(--mood-dark)' }}>
                         3. Patterns to Pay Attention To
                       </h4>
-                      {allTimeSynthesis.sortedPatterns.length > 0 ? (
+                      {allTimeStats.sortedPatterns.length > 0 ? (
                         <ul className="text-xs text-slate-700 space-y-1.5">
-                          {allTimeSynthesis.sortedPatterns.map((p, i) => (
+                          {allTimeStats.sortedPatterns.map((p, i) => (
                             <li
                               key={i}
                               className="p-2.5 rounded-2xl bg-amber-50/70 border border-amber-100 flex items-center justify-between gap-2"
@@ -2112,7 +2162,6 @@ export default function App() {
         {/* ================= SUPER-SMOOTH BOTTOM NAVBAR WITH GLIDING SCOOP ================= */}
         <div className="nav-bar-wrapper">
           <nav className="nav-bar-pill" aria-label="Navigasi Utama">
-            {/* Lingkaran Putih Meluncur Mulus Mengikuti Tab Aktif */}
             <div
               className="nav-active-glider"
               style={{ transform: `translateX(${navIndex * 100}%)` }}
@@ -2161,12 +2210,12 @@ export default function App() {
           </nav>
         </div>
 
-        {/* ================= MODAL: PROFIL & PAKET BAHASA OFFLINE ================= */}
+        {/* ================= MODAL: PROFIL & KONEKSI KUNCI AKSES ================= */}
         {settingsOpen && (
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 subtab-enter">
-            <div className="bg-white rounded-[32px] max-w-sm w-full p-6 shadow-2xl border border-slate-100">
+            <div className="bg-white rounded-[32px] max-w-sm w-full p-6 shadow-2xl border border-slate-100 max-h-[90dvh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-extrabold text-slate-800">Profil Dear Future Me</h3>
+                <h3 className="text-base font-extrabold text-slate-800">Profil Dearly</h3>
                 <button
                   onClick={() => setSettingsOpen(false)}
                   className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold"
@@ -2187,69 +2236,83 @@ export default function App() {
                   />
                 </div>
 
-                {/* Pengaturan Paket Bahasa Mendalam (1x Unduh, Setelahnya 100% Offline di HP) */}
-                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2">
+                {/* Input API Key tersimpan HANYA di HP ini */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-extrabold text-slate-800">
-                      ✨ Paket Perangkum Mendalam (Offline)
-                    </p>
+                    <label className="text-xs font-extrabold text-slate-800">
+                      🔑 API Key (Tersimpan Lokal di HP)
+                    </label>
                     <span
                       className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                        languagePackStatus.state === 'ready'
+                        apiKey.trim()
                           ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-slate-200 text-slate-600'
+                          : 'bg-amber-100 text-amber-800'
                       }`}
                     >
-                      {languagePackStatus.state === 'ready'
-                        ? 'Aktif'
-                        : languagePackStatus.state === 'loading'
-                          ? `${languagePackStatus.progress}%`
-                          : 'Mode Instan'}
+                      {apiKey.trim() ? 'Terpasang' : 'Belum diisi'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Unduh sekali (~350 MB lewat Wi-Fi) agar perangkat dapat merangkum cerita panjang secara lebih mendalam tanpa internet.
-                  </p>
-                  {languagePackStatus.state === 'loading' && (
-                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-300"
-                        style={{
-                          width: `${Math.max(6, languagePackStatus.progress)}%`,
-                          backgroundColor: 'var(--mood-main)'
-                        }}
-                      />
-                    </div>
-                  )}
-                  {languagePackStatus.state !== 'ready' && languagePackStatus.state !== 'loading' && (
+
+                  <div className="relative">
+                    <input
+                      type={showKeyText ? 'text' : 'password'}
+                      value={inputApiKey}
+                      onChange={(e) => setInputApiKey(e.target.value)}
+                      className="w-full text-xs p-3 pr-14 rounded-2xl bg-white border border-slate-200 focus:outline-none font-mono"
+                      placeholder="Tempel kunci API (gratis / berbayar)..."
+                    />
                     <button
                       type="button"
-                      onClick={() => initLocalNeuralModel()}
-                      className="w-full py-2 rounded-full text-[11px] font-extrabold transition"
-                      style={{ backgroundColor: 'var(--mood-pill)', color: 'var(--mood-dark)' }}
+                      onClick={() => setShowKeyText((p) => !p)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-500 px-2 py-1 rounded-lg bg-slate-100"
                     >
-                      Aktifkan Paket Bahasa Mendalam
+                      {showKeyText ? 'Tutup' : 'Lihat'}
                     </button>
-                  )}
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                      Pilihan Mesin Ringkasan
+                    </label>
+                    <select
+                      value={inputModel}
+                      onChange={(e) => setInputModel(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-xl bg-white border border-slate-200 focus:outline-none font-semibold text-slate-700"
+                    >
+                      <option value="gemini-2.5-flash">Standar (Seimbang & Cerdas)</option>
+                      <option value="gemini-2.5-flash-lite">Super Hemat (Paling Ringan)</option>
+                    </select>
+                  </div>
+
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Kunci hanya tersimpan di HP ini dan dipanggil tepat 1x setiap kamu menekan tombol Simpan Jurnal.
+                  </p>
                 </div>
 
                 <button
                   onClick={() => {
                     const nextName = inputUserName.trim() || userName;
+                    const nextKey = inputApiKey.trim();
                     setUserName(nextName);
-                    saveToPersistentStorage({
+                    setApiKey(nextKey);
+                    setSelectedModel(inputModel);
+                    persistState({
                       selectedMoodId,
                       userName: nextName,
+                      apiKey: nextKey,
+                      selectedModel: inputModel,
                       completedActions,
-                      journals
+                      journals,
+                      monthlySummaries,
+                      yearlySummaries
                     });
                     setSettingsOpen(false);
-                    showToast('Profil disimpan!');
+                    showToast('Pengaturan Dearly disimpan! ✨');
                   }}
                   className="w-full py-3 rounded-full text-white text-xs font-extrabold shadow-md"
                   style={{ backgroundColor: 'var(--mood-dark)' }}
                 >
-                  Simpan Profil
+                  Simpan Pengaturan
                 </button>
 
                 <button
@@ -2265,7 +2328,7 @@ export default function App() {
 
         {/* Toast Notification */}
         {toastMsg && (
-          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-bold shadow-xl subtab-enter">
+          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-bold shadow-xl text-center max-w-[90%] subtab-enter">
             {toastMsg}
           </div>
         )}

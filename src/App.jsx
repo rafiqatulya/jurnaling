@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  DEFAULT_MODEL,
+  LITE_MODEL,
   generateDearlyAnalysis,
   computeLocalStats,
   testDearlyConnection
@@ -313,6 +315,17 @@ function CuteAnimal({ type, sizeClass = 'w-full h-full' }) {
 // ============================================================================
 const STORAGE_KEY = 'dearly_journal_data_v1';
 
+// Migrasi otomatis model 2.5 lama yang sudah ditutup ke seri 3.8 terbaru
+function migrateSavedModel(modelId) {
+  if (!modelId || modelId === 'gemini-2.5-flash' || modelId === 'gemini-2.0-flash') {
+    return DEFAULT_MODEL;
+  }
+  if (modelId === 'gemini-2.5-flash-lite' || modelId === 'gemini-2.0-flash-lite') {
+    return LITE_MODEL;
+  }
+  return modelId;
+}
+
 function loadInitialState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -322,7 +335,7 @@ function loadInitialState() {
         selectedMoodId: parsed.selectedMoodId || 'in_love',
         userName: parsed.userName || 'Lya',
         apiKey: parsed.apiKey || '',
-        selectedModel: parsed.selectedModel || 'gemini-2.5-flash',
+        selectedModel: migrateSavedModel(parsed.selectedModel),
         completedActions: parsed.completedActions || {},
         journals: parsed.journals && typeof parsed.journals === 'object' ? parsed.journals : {},
         monthlySummaries: parsed.monthlySummaries && typeof parsed.monthlySummaries === 'object' ? parsed.monthlySummaries : {},
@@ -337,7 +350,7 @@ function loadInitialState() {
     selectedMoodId: 'in_love',
     userName: 'Lya',
     apiKey: '',
-    selectedModel: 'gemini-2.5-flash',
+    selectedModel: DEFAULT_MODEL,
     completedActions: {},
     journals: {},
     monthlySummaries: {},
@@ -638,6 +651,11 @@ export default function App() {
         topHistoricalContext
       });
 
+      const resolvedModel = result.usedModel || selectedModel;
+      if (resolvedModel !== selectedModel) {
+        setSelectedModel(resolvedModel);
+      }
+
       const finalizedEntry = {
         ...baseEntry,
         daily_insights: result.daily_insights
@@ -662,7 +680,7 @@ export default function App() {
         selectedMoodId,
         userName,
         apiKey,
-        selectedModel,
+        selectedModel: resolvedModel,
         completedActions,
         journals: nextJournals,
         monthlySummaries: nextMonthlySummaries,
@@ -758,7 +776,6 @@ export default function App() {
 
   const navIndex = currentView === 'home' ? 0 : currentView === 'journal' ? 1 : 2;
 
-  // Bar 12 hari terakhir pada bulan terpilih untuk Mood Journey
   const journeyDays = useMemo(() => {
     const endDay = Math.min(daysInSelectedMonth, Math.max(12, selectedDay));
     const startDay = Math.max(1, endDay - 11);
@@ -767,8 +784,7 @@ export default function App() {
     return arr;
   }, [daysInSelectedMonth, selectedDay]);
 
-  const isCustomFallbackModel =
-    inputModel !== 'gemini-2.5-flash' && inputModel !== 'gemini-2.5-flash-lite';
+  const isCustomFallbackModel = inputModel !== DEFAULT_MODEL && inputModel !== LITE_MODEL;
 
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-start py-0 sm:py-6 px-0 sm:px-4">
@@ -2291,8 +2307,8 @@ export default function App() {
                       onChange={(e) => setInputModel(e.target.value)}
                       className="w-full text-xs p-2.5 rounded-xl bg-white border border-slate-200 focus:outline-none font-semibold text-slate-700"
                     >
-                      <option value="gemini-2.5-flash">Standar (Seimbang & Cerdas)</option>
-                      <option value="gemini-2.5-flash-lite">Super Hemat (Paling Ringan)</option>
+                      <option value={DEFAULT_MODEL}>Standar (Terbaru & Cerdas)</option>
+                      <option value={LITE_MODEL}>Super Hemat (Paling Ringan)</option>
                       {isCustomFallbackModel && (
                         <option value={inputModel}>Otomatis ({inputModel})</option>
                       )}

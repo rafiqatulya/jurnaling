@@ -3,6 +3,9 @@
 // Tidak ada API Key di dalam kode. Kunci diambil 100% dari penyimpanan lokal HP.
 // ============================================================================
 
+export const DEFAULT_MODEL = 'gemini-3.8-flash';
+export const LITE_MODEL = 'gemini-3.5-flash-lite';
+
 function extractSafeJson(rawText) {
   if (!rawText) return null;
   const cleaned = rawText
@@ -31,8 +34,9 @@ function extractResponseText(data) {
   return target.map((p) => p.text || '').join('\n').trim();
 }
 
-// Cari otomatis model Flash yang aktif pada API Key jika model pilihan terkena 404
-async function discoverAvailableFlashModel(cleanKey) {
+// Cari otomatis model Flash terbaru yang aktif pada API Key (mengecualikan model yang gagal 404)
+async function discoverAvailableFlashModel(cleanKey, excludeModels = []) {
+  const excluded = new Set(Array.isArray(excludeModels) ? excludeModels : [excludeModels]);
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`
   );
@@ -40,26 +44,32 @@ async function discoverAvailableFlashModel(cleanKey) {
   const json = await res.json();
   const models = (json?.models || [])
     .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-    .map((m) => (m.name || '').replace(/^models\//, ''));
+    .map((m) => (m.name || '').replace(/^models\//, ''))
+    .filter((m) => m && !excluded.has(m));
 
   const preferred = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3-flash',
     'gemini-flash-latest'
   ];
   for (const p of preferred) {
     if (models.includes(p)) return p;
   }
 
+  // Ambil model flash terbaru berdasarkan urutan versi tertinggi
+  const flashCandidates = models
+    .filter((m) => m.includes('flash') && !/(image|audio|tts|live|veo|embedding|2\.0|2\.5)/i.test(m))
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+
+  if (flashCandidates.length > 0) return flashCandidates[0];
+
   return (
-    models.find(
-      (m) =>
-        m.includes('flash') &&
-        !/(image|audio|tts|live|veo|embedding)/i.test(m)
-    ) ||
-    models.find((m) => m.startsWith('gemini-') && !/(image|audio|tts|embedding)/i.test(m)) ||
+    models.find((m) => m.startsWith('gemini-3') && !/(image|audio|tts|live|veo|embedding)/i.test(m)) ||
+    models.find((m) => m.startsWith('gemini-') && !/(image|audio|tts|live|veo|embedding)/i.test(m)) ||
     null
   );
 }
@@ -106,66 +116,56 @@ async function sendGenerateRequest(cleanKey, modelName, systemInstruction, userP
   return response.json();
 }
 
+async function sendPing(cleanKey, modelName) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      modelName
+    )}:generateContent?key=${encodeURIComponent(cleanKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Balas dengan kata: OK' }] }],
+        generationConfig: { maxOutputTokens: 64 }
+      })
+    }
+  );
+  if (res.ok) return { ok: true, status: res.status };
+  let detail = '';
+  try {
+    const ej = await res.json();
+    detail = ej?.error?.message || '';
+  } catch {}
+  return { ok: false, status: res.status, detail };
+}
+
 /**
- * Tes Koneksi 1 Klik dari menu Profil untuk memastikan API Key & model berjalan normal.
+ * Tes Koneksi 1 Klik dari menu Profil.
+ * Jika model yang dipilih kena 404, otomatis cari & uji model terbaru yang aktif.
  */
-export async function testDearlyConnection(apiKey, preferredModel = 'gemini-2.5-flash') {
+export async function testDearlyConnection(apiKey, preferredModel = DEFAULT_MODEL) {
   const cleanKey = (apiKey || '').trim();
   if (!cleanKey) {
     return { ok: false, message: 'API Key masih kosong.' };
   }
 
   try {
-    let targetModel = preferredModel;
-    const listRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`
-    );
+    let targetModel = preferredModel || DEFAULT_MODEL;
+    let ping = await sendPing(cleanKey, targetModel);
 
-    if (!listRes.ok) {
-      let detail = '';
-      try {
-        const ej = await listRes.json();
-        detail = ej?.error?.message || '';
-      } catch {}
-      return {
-        ok: false,
-        message: `HTTP ${listRes.status}: ${detail || 'API Key ditolak oleh server.'}`
-      };
-    }
-
-    const listJson = await listRes.json();
-    const available = (listJson?.models || [])
-      .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-      .map((m) => (m.name || '').replace(/^models\//, ''));
-
-    if (!available.includes(targetModel)) {
-      const fallback = await discoverAvailableFlashModel(cleanKey);
-      if (fallback) targetModel = fallback;
-    }
-
-    const pingRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        targetModel
-      )}:generateContent?key=${encodeURIComponent(cleanKey)}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: 'Balas dengan kata: OK' }] }],
-          generationConfig: { maxOutputTokens: 64 }
-        })
+    // Jika model lama/pilihan terkena 404, cari otomatis model terbaru lalu tes sekali lagi
+    if (!ping.ok && ping.status === 404) {
+      const fallback = await discoverAvailableFlashModel(cleanKey, [targetModel]);
+      if (fallback) {
+        targetModel = fallback;
+        ping = await sendPing(cleanKey, targetModel);
       }
-    );
+    }
 
-    if (!pingRes.ok) {
-      let detail = '';
-      try {
-        const ej = await pingRes.json();
-        detail = ej?.error?.message || '';
-      } catch {}
+    if (!ping.ok) {
       return {
         ok: false,
-        message: `HTTP ${pingRes.status} (${targetModel}): ${detail || 'Gagal merespons.'}`
+        message: `HTTP ${ping.status} (${targetModel}): ${ping.detail || 'Gagal merespons.'}`
       };
     }
 
@@ -187,7 +187,7 @@ export async function testDearlyConnection(apiKey, preferredModel = 'gemini-2.5-
  */
 export async function generateDearlyAnalysis({
   apiKey,
-  modelName = 'gemini-2.5-flash',
+  modelName = DEFAULT_MODEL,
   userName = 'Lya',
   dateLabel,
   monthLabel,
@@ -269,15 +269,16 @@ export async function generateDearlyAnalysis({
     .filter(Boolean)
     .join('\n');
 
+  let activeModel = modelName || DEFAULT_MODEL;
   let data;
   try {
-    data = await sendGenerateRequest(cleanKey, modelName, systemInstruction, userPrompt);
+    data = await sendGenerateRequest(cleanKey, activeModel, systemInstruction, userPrompt);
   } catch (err) {
-    // Jika model 404 (tidak ditemukan), coba cari otomatis model aktif 1 kali
     if (err.status === 404) {
-      const fallbackModel = await discoverAvailableFlashModel(cleanKey);
-      if (fallbackModel && fallbackModel !== modelName) {
-        data = await sendGenerateRequest(cleanKey, fallbackModel, systemInstruction, userPrompt);
+      const fallbackModel = await discoverAvailableFlashModel(cleanKey, [activeModel]);
+      if (fallbackModel) {
+        activeModel = fallbackModel;
+        data = await sendGenerateRequest(cleanKey, activeModel, systemInstruction, userPrompt);
       } else {
         throw new Error(`HTTP 404: ${err.message}`);
       }
@@ -302,6 +303,7 @@ export async function generateDearlyAnalysis({
     Array.isArray(val) ? val.filter((x) => typeof x === 'string' && x.trim().length > 0) : fallback;
 
   return {
+    usedModel: activeModel,
     daily_insights: {
       self_reflection: {
         summary: d.self_reflection?.summary || `Catatan hari ini dengan suasana hati ${moodName}.`,

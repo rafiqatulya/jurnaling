@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { generateDearlyAnalysis, computeLocalStats } from './smartEngine';
+import {
+  generateDearlyAnalysis,
+  computeLocalStats,
+  testDearlyConnection
+} from './smartEngine';
 
 // ============================================================================
 // 1. COLLECTION `mood_messages` (12 MOOD × 10 PESAN PERSONAL = 120 MESSAGES)
@@ -385,6 +389,8 @@ export default function App() {
 
   const [toastMsg, setToastMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [testResultMsg, setTestResultMsg] = useState('');
 
   // Data Jurnal & Ringkasan Bulanan / Tahunan
   const [completedActions, setCompletedActions] = useState(initialData.completedActions);
@@ -464,7 +470,7 @@ export default function App() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => {
       setToastMsg('');
-    }, 2800);
+    }, 3400);
   };
 
   const getMoodById = (id) => MOODS.find((m) => m.id === id) || MOODS[2];
@@ -534,6 +540,7 @@ export default function App() {
     setInputApiKey(apiKey);
     setInputModel(selectedModel);
     setShowKeyText(false);
+    setTestResultMsg('');
     setSettingsOpen(true);
   };
 
@@ -607,7 +614,6 @@ export default function App() {
 
     setIsSaving(true);
     try {
-      // Kumpulkan konteks historis super ringkas (~30-50 kata saja agar hemat token)
       const topInt = allTimeStats.sortedInterests.slice(0, 4).map((x) => x.name).join(', ');
       const topDrm = allTimeStats.sortedDreams.slice(0, 3).map((x) => x.name).join(', ');
       const topHistoricalContext = [
@@ -668,12 +674,15 @@ export default function App() {
         insightsSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 120);
     } catch (err) {
-      if (err.message === 'INVALID_KEY') {
-        showToast('Catatan tersimpan, tapi API Key tidak valid. Cek di menu Profil.');
-      } else if (err.message === 'RATE_LIMIT') {
-        showToast('Catatan tersimpan. Kuota API sedang penuh, coba sebentar lagi.');
+      const msg = err?.message || 'Koneksi gagal';
+      if (msg.startsWith('INVALID_KEY')) {
+        showToast('API Key ditolak. Cek ulang di menu Profil.');
+      } else if (msg.startsWith('RATE_LIMIT')) {
+        showToast('Kuota gratis sementara penuh, tunggu 1 menit lalu coba lagi.');
+      } else if (msg === 'PARSE_FAILED') {
+        showToast('Format hasil tidak utuh. Tekan Simpan Jurnal sekali lagi.');
       } else {
-        showToast('Catatan tersimpan di HP. Pastikan internet aktif untuk merangkum.');
+        showToast(`Catatan tersimpan. Gagal merangkum: ${msg.slice(0, 75)}`);
       }
     } finally {
       setIsSaving(false);
@@ -757,6 +766,9 @@ export default function App() {
     for (let d = startDay; d <= endDay; d++) arr.push(d);
     return arr;
   }, [daysInSelectedMonth, selectedDay]);
+
+  const isCustomFallbackModel =
+    inputModel !== 'gemini-2.5-flash' && inputModel !== 'gemini-2.5-flash-lite';
 
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-start py-0 sm:py-6 px-0 sm:px-4">
@@ -1781,7 +1793,7 @@ export default function App() {
                       })}
                     </div>
 
-                    {/* Ringkasan Bulan Berjalan (otomatis terupdate saat tombol Simpan ditekan) */}
+                    {/* Ringkasan Bulan Berjalan */}
                     <div className="p-4 rounded-[28px] text-white shadow-md" style={{ backgroundColor: 'var(--mood-dark)' }}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
@@ -2281,12 +2293,40 @@ export default function App() {
                     >
                       <option value="gemini-2.5-flash">Standar (Seimbang & Cerdas)</option>
                       <option value="gemini-2.5-flash-lite">Super Hemat (Paling Ringan)</option>
+                      {isCustomFallbackModel && (
+                        <option value={inputModel}>Otomatis ({inputModel})</option>
+                      )}
                     </select>
                   </div>
 
                   <p className="text-[10px] text-slate-500 leading-relaxed">
                     Kunci hanya tersimpan di HP ini dan dipanggil tepat 1x setiap kamu menekan tombol Simpan Jurnal.
                   </p>
+
+                  <button
+                    type="button"
+                    disabled={isTestingKey}
+                    onClick={async () => {
+                      setIsTestingKey(true);
+                      setTestResultMsg('Menghubungkan...');
+                      const res = await testDearlyConnection(inputApiKey, inputModel);
+                      setTestResultMsg(res.message);
+                      if (res.ok && res.usedModel) {
+                        setInputModel(res.usedModel);
+                      }
+                      setIsTestingKey(false);
+                    }}
+                    className="w-full py-2 rounded-xl text-[11px] font-extrabold transition"
+                    style={{ backgroundColor: 'var(--mood-pill)', color: 'var(--mood-dark)' }}
+                  >
+                    {isTestingKey ? 'Sedang Mengecek...' : 'Tes Koneksi'}
+                  </button>
+
+                  {testResultMsg && (
+                    <p className="text-[10px] font-bold text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200 leading-snug">
+                      {testResultMsg}
+                    </p>
+                  )}
                 </div>
 
                 <button
